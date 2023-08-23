@@ -149,6 +149,14 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
          int status;
          int size;
 
+         // NULL communicator indicates that this rank should not run field solver
+         if(parent_comm == MPI_COMM_NULL){
+            localSize[0] == 0;
+            localSize[1] == 0;
+            localSize[2] == 0;
+            return;
+         }
+
          status = MPI_Comm_size(parent_comm, &size);
 
          // Heuristically choose a good domain decomposition for our field size
