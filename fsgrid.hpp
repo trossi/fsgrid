@@ -147,7 +147,7 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
    FsGrid(std::array<int32_t,3> globalSize, MPI_Comm& parent_comm, std::array<bool,3> isPeriodic, FsGridCouplingInformation* coupling)
             : globalSize(globalSize), coupling(coupling){
          int status;
-         int size = 30; //The number of FS processes [HARD CODED FOR NOW]
+         int size = 10; //The number of FS processes [HARD CODED FOR NOW]
 
          // Heuristically choose a good domain decomposition for our field size
          computeDomainDecomposition(globalSize, size, ntasks);
@@ -208,14 +208,15 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
            }
          }
 
-         // Create a temporary Aux subcommunicator for the (Aux) MPI_Cart_create
-         int colorAux = (parentRank < parentSize - size) ? MPI_UNDEFINED : 1;
+         // Create a temporary aux subcommunicator for the (Aux) MPI_Cart_create
+         int colorAux = (parentRank < parentSize % size) ? MPI_UNDEFINED 
+            : (parentRank - (parentSize % size)) / size;
          MPI_Comm_split(parent_comm, colorAux, parentRank, &comm1d_aux);
 
          int rankAux;
          std::array<int, 3> taskPositionAux;
 
-         if(colorAux == 1){
+         if(colorAux != MPI_UNDEFINED){
            // Create an aux cartesian communicator corresponding to the comm3d (but shidted).
            status = MPI_Cart_create(comm1d_aux, 3, ntasks.data(), isPeriodicInt.data(), 0, &comm3d_aux);
            if(status != MPI_SUCCESS) {
@@ -237,27 +238,29 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
          }
          
          // All FS ranks send their true comm3d rank and taskPosition data to the 
-         // rank 'parentRank + (parentSize - size)'
-
-         MPI_Request request[4];
-         int dest = (colorFs == 1) ? parentRank + (parentSize - size) : MPI_PROC_NULL;
-
-         MPI_Isend(&rank, 1, MPI_INT, dest, 9274, parent_comm, &request[0]);
-         MPI_Isend(taskPosition.data(), 3, MPI_INT, dest, 9275, parent_comm, &request[1]);
+         // rank 'parentRank + i * size + parentSize % size'
+         MPI_Request *request = new MPI_Request[parentSize / size * 2 + 2];
+         for(int i = 0; i < parentSize / size; i++){
+            int dest = (colorFs == 1) ? parentRank + i * size + parentSize % size 
+               : MPI_PROC_NULL;
+            MPI_Isend(&rank, 1, MPI_INT, dest, 9274, parent_comm, &request[2 * i]);
+            MPI_Isend(taskPosition.data(), 3, MPI_INT, dest, 9275, parent_comm, &request[2 * i + 1]);
+         }
 
          // All Aux ranks receive the true comm3d rank and taskPosition data from 
-         // rank 'parentRank - (parentSize - size)' and then compare that it matches 
-         // their aux data
-
-         int rankRecv;
+         // rank 'parentRank - (parentRank - (parentSize % size)) / size * size ' and then 
+         // compare that it matches their aux data
          std::array<int, 3> taskPositionRecv;
-         int source = (colorAux == 1) ? parentRank - (parentSize - size) : MPI_PROC_NULL;
+         int rankRecv;
+         int source = (colorAux != MPI_UNDEFINED) ? parentRank - (parentRank - (parentSize % size)) 
+            / size * size - parentSize % size : MPI_PROC_NULL;
 
-         MPI_Irecv(&rankRecv, 1, MPI_INT, source, 9274, parent_comm, &request[2]);
-         MPI_Irecv(taskPositionRecv.data(), 3, MPI_INT, source, 9275, parent_comm, &request[3]);
-         MPI_Waitall(4, request, MPI_STATUS_IGNORE);
+         MPI_Irecv(&rankRecv, 1, MPI_INT, source, 9274, parent_comm, &request[parentSize / size * 2]);
+         MPI_Irecv(taskPositionRecv.data(), 3, MPI_INT, source, 9275, parent_comm, 
+            &request[parentSize / size * 2 + 1]);
+         MPI_Waitall(parentSize / size * 2 + 2, request, MPI_STATUS_IGNORE);
 
-         if(colorAux == 1){
+         if(colorAux != MPI_UNDEFINED){
             if(rankRecv != rankAux ||
                  taskPositionRecv[0] != taskPositionAux[0] ||
                     taskPositionRecv[1] != taskPositionAux[1] ||
@@ -267,6 +270,7 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
                throw std::runtime_error("FSGrid aux communicator setup failed.");    
             }
          }
+         delete[] request;
 
          // If non-FS process, set rank to -1 and localSize to zero and return
          if(colorFs == MPI_UNDEFINED){
@@ -545,6 +549,9 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
               return std::pair<int,LocalID>(MPI_PROC_NULL,0);
            }
          }
+         // int RR;
+         // MPI_Comm_rank(MPI_COMM_WORLD, &RR);
+         // printf("1R: %d, id: %lld, t[0]: %d, t[1]: %d,t[2]: %d, comm3d: %d, comm3d_aux: %d, retval: %d \n",RR,id,taskIndex[0],taskIndex[1],taskIndex[2],comm3d, comm3d_aux,retVal.first);fflush(stdout);MPI_Barrier(MPI_COMM_WORLD);
 
          // The rank is obtained from 'comm3d' for FS ranks
          if(comm3d != MPI_COMM_NULL){
@@ -558,6 +565,7 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
               return std::pair<int,LocalID>(MPI_PROC_NULL,0);
            }
          }
+         //   printf("2R: %d, id: %lld, t[0]: %d, t[1]: %d,t[2]: %d, comm3d: %d, comm3d_aux: %d, retval: %d \n",RR,id,taskIndex[0],taskIndex[1],taskIndex[2],comm3d, comm3d_aux,retVal.first);fflush(stdout);MPI_Barrier(MPI_COMM_WORLD);
 
          // Determine localID of that cell within the target task
          std::array<int, 3> thatTasksStart;
