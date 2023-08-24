@@ -526,6 +526,7 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
               return std::pair<int,LocalID>(MPI_PROC_NULL,0);
            }
          }
+
          // The rank is obtained from 'comm3d' for FS ranks
          if(comm3d != MPI_COMM_NULL){
             status = MPI_Cart_rank(comm3d, taskIndex.data(), &retVal.first);
@@ -793,6 +794,9 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
       /*! Perform ghost cell communication.
        */
       void updateGhostCells() {
+
+         if(comm3d == MPI_COMM_NULL) return;
+
          //TODO, faster with simultaneous isends& ireceives?
          std::array<MPI_Request, 27> receiveRequests;
          std::array<MPI_Request, 27> sendRequests;
