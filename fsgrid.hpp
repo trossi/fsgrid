@@ -237,6 +237,10 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
                << std::endl;
            }
          }
+
+         // Free temporary communicators
+         MPI_Comm_free(&auxComm);
+         MPI_Comm_free(&fsComm);
          
          // All FS ranks send their true comm3d rank and taskPosition data to the 
          // rank 'parentRank + (parentSize - size)'
@@ -497,7 +501,11 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
             if(neighbourSendType[i] != MPI_DATATYPE_NULL)
                MPI_Type_free(&(neighbourSendType[i]));
          }
-         MPI_Comm_free(&comm3d);
+         if(comm3d != MPI_COMM_NULL)
+            MPI_Comm_free(&comm3d);
+
+         if(comm3d_aux != MPI_COMM_NULL)
+            MPI_Comm_free(&comm3d_aux);
       }
 
       /*! Returns the task responsible, and its localID for handling the cell with the given GlobalID
