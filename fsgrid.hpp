@@ -164,7 +164,7 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
          int parentRank;
          MPI_Comm_rank(parent_comm, &parentRank);
          int parentSize;
-         MPI_Comm_rank(parent_comm, &parentSize);
+         MPI_Comm_size(parent_comm, &parentSize);
 
          // Create a temporary FS subcommunicator for the MPI_Cart_create
          MPI_Comm fsComm;
@@ -210,18 +210,15 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
          if(colorAux == 1){
            // Create an aux cartesian communicator corresponding to the comm3d (but shidted).
            status = MPI_Cart_create(auxComm, 3, ntasks.data(), isPeriodicInt.data(), 0, &comm3d_aux);
-
            if(status != MPI_SUCCESS) {
              std::cerr << "Creating cartesian communicatior failed when attempting to create FsGrid!" << std::endl;
              throw std::runtime_error("FSGrid communicator setup failed");
            }
-
            status = MPI_Comm_rank(comm3d_aux, &rankAux);
            if(status != MPI_SUCCESS) {
              std::cerr << "Getting rank failed when attempting to create FsGrid!" << std::endl;
              return;
            }
-
            // Determine our position in the resulting task-grid
            status = MPI_Cart_coords(comm3d_aux, rankAux, 3, taskPositionAux.data());
            if(status != MPI_SUCCESS) {
@@ -233,26 +230,26 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
          
          // All FS ranks send their true comm3d rank and taskPosition data to the 
          // rank 'parentRank + (parentSize - size)'
-         MPI_Request request[4];
-         if(colorFs == 1){
-            MPI_Isend(&rank, 1, MPI_INT, parentRank + (parentSize - size), 9274, parent_comm, &request[0]);
 
-            MPI_Isend(taskPosition.data(), 3, MPI_INT, parentRank + (parentSize - size), 9275, parent_comm, &request[1]);
-         }
+         MPI_Request request[4];
+         int dest = (colorFs == 1) ? parentRank + (parentSize - size) : MPI_PROC_NULL;
+
+         MPI_Isend(&rank, 1, MPI_INT, dest, 9274, parent_comm, &request[0]);
+         MPI_Isend(taskPosition.data(), 3, MPI_INT, dest, 9275, parent_comm, &request[1]);
 
          // All Aux ranks receive the true comm3d rank and taskPosition data from 
-         // rank 'parentRank - (parentSize - size)' and compare that it matches 
+         // rank 'parentRank - (parentSize - size)' and then compare that it matches 
          // their aux data
+
+         int rankRecv;
+         std::array<int, 3> taskPositionRecv;
+         int source = (colorAux == 1) ? parentRank - (parentSize - size) : MPI_PROC_NULL;
+
+         MPI_Irecv(&rankRecv, 1, MPI_INT, source, 9274, parent_comm, &request[2]);
+         MPI_Irecv(taskPositionRecv.data(), 3, MPI_INT, source, 9275, parent_comm, &request[3]);
+         MPI_Waitall(4, request, MPI_STATUS_IGNORE);
+
          if(colorAux == 1){
-            int rankRecv;
-            std::array<int, 3> taskPositionRecv;
-
-            MPI_Irecv(&rankRecv, 1, MPI_INT, parentRank - (parentSize - size), 9274, parent_comm, &request[2]);
-
-            MPI_Irecv(taskPositionRecv.data(), 3, MPI_INT, parentRank - (parentSize - size), 9275, parent_comm, &request[3]);
-
-            MPI_Waitall(4, request, MPI_STATUS_IGNORE);
-
             if(rankRecv != rankAux ||
                  taskPositionRecv[0] != taskPositionAux[0] ||
                     taskPositionRecv[1] != taskPositionAux[1] ||
