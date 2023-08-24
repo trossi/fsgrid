@@ -137,17 +137,17 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
       typedef int64_t GlobalID;
 
    // Legacy constructor from coupling reference
-   FsGrid(std::array<int32_t,3> globalSize, MPI_Comm parent_comm, std::array<bool,3> isPeriodic, FsGridCouplingInformation& coupling) : FsGrid(globalSize, parent_comm, isPeriodic, &coupling) {}
+   FsGrid(std::array<int32_t,3> globalSize, MPI_Comm& parent_comm, std::array<bool,3> isPeriodic, FsGridCouplingInformation& coupling) : FsGrid(globalSize, parent_comm, isPeriodic, &coupling) {}
 
       /*! Constructor for this grid.
        * \param globalSize Cell size of the global simulation domain.
        * \param MPI_Comm The MPI communicator this grid should use.
        * \param isPeriodic An array specifying, for each dimension, whether it is to be treated as periodic.
        */
-   FsGrid(std::array<int32_t,3> globalSize, MPI_Comm parent_comm, std::array<bool,3> isPeriodic, FsGridCouplingInformation* coupling)
-            : globalSize(globalSize), coupling(coupling), parent_comm(parent_comm) {
+   FsGrid(std::array<int32_t,3> globalSize, MPI_Comm& parent_comm, std::array<bool,3> isPeriodic, FsGridCouplingInformation* coupling)
+            : globalSize(globalSize), coupling(coupling){
          int status;
-         size = 30; //The number of FS processes [HARD CODED FOR NOW]
+         int size = 30; //The number of FS processes [HARD CODED FOR NOW]
 
          // Heuristically choose a good domain decomposition for our field size
          computeDomainDecomposition(globalSize, size, ntasks);
@@ -177,14 +177,13 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
          }
 
          // Create a temporary FS subcommunicator for the MPI_Cart_create
-         MPI_Comm fsComm;
          int colorFs = (parentRank < size) ? 1 : MPI_UNDEFINED;
-         MPI_Comm_split(parent_comm, colorFs, parentRank, &fsComm);
+         MPI_Comm_split(parent_comm, colorFs, parentRank, &comm1d);
 
          if(colorFs == 1){
            // Create cartesian communicator. Note, that reorder is false so
            // ranks match the ones in parent_comm
-           status = MPI_Cart_create(fsComm, 3, ntasks.data(), isPeriodicInt.data(), 0, &comm3d);
+           status = MPI_Cart_create(comm1d, 3, ntasks.data(), isPeriodicInt.data(), 0, &comm3d);
 
            if(status != MPI_SUCCESS) {
              std::cerr << "Creating cartesian communicatior failed when attempting to create FsGrid!" << std::endl;
@@ -210,16 +209,15 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
          }
 
          // Create a temporary Aux subcommunicator for the (Aux) MPI_Cart_create
-         MPI_Comm auxComm;
          int colorAux = (parentRank < parentSize - size) ? MPI_UNDEFINED : 1;
-         MPI_Comm_split(parent_comm, colorAux, parentRank, &auxComm);
+         MPI_Comm_split(parent_comm, colorAux, parentRank, &comm1d_aux);
 
          int rankAux;
          std::array<int, 3> taskPositionAux;
 
          if(colorAux == 1){
            // Create an aux cartesian communicator corresponding to the comm3d (but shidted).
-           status = MPI_Cart_create(auxComm, 3, ntasks.data(), isPeriodicInt.data(), 0, &comm3d_aux);
+           status = MPI_Cart_create(comm1d_aux, 3, ntasks.data(), isPeriodicInt.data(), 0, &comm3d_aux);
            if(status != MPI_SUCCESS) {
              std::cerr << "Creating cartesian communicatior failed when attempting to create FsGrid!" << std::endl;
              throw std::runtime_error("FSGrid communicator setup failed");
@@ -237,10 +235,6 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
                << std::endl;
            }
          }
-
-         // Free temporary communicators
-         MPI_Comm_free(&auxComm);
-         MPI_Comm_free(&fsComm);
          
          // All FS ranks send their true comm3d rank and taskPosition data to the 
          // rank 'parentRank + (parentSize - size)'
@@ -495,17 +489,24 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
        *  Cleans up the cartesian communicator
        */
       void finalize() {
-         for(int i=0;i<27;i++){
-            if(neighbourReceiveType[i] != MPI_DATATYPE_NULL)
-               MPI_Type_free(&(neighbourReceiveType[i]));
-            if(neighbourSendType[i] != MPI_DATATYPE_NULL)
-               MPI_Type_free(&(neighbourSendType[i]));
+         // If not a non-FS process
+         if(rank != -1){
+            for(int i=0;i<27;i++){
+               if(neighbourReceiveType[i] != MPI_DATATYPE_NULL)
+                  MPI_Type_free(&(neighbourReceiveType[i]));
+               if(neighbourSendType[i] != MPI_DATATYPE_NULL)
+                  MPI_Type_free(&(neighbourSendType[i]));
+            }
          }
+
          if(comm3d != MPI_COMM_NULL)
             MPI_Comm_free(&comm3d);
-
          if(comm3d_aux != MPI_COMM_NULL)
             MPI_Comm_free(&comm3d_aux);
+         if(comm1d != MPI_COMM_NULL)
+            MPI_Comm_free(&comm1d);
+         if(comm1d_aux != MPI_COMM_NULL)
+            MPI_Comm_free(&comm1d_aux);
       }
 
       /*! Returns the task responsible, and its localID for handling the cell with the given GlobalID
@@ -1085,11 +1086,11 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
 
    private:
       //! MPI Cartesian communicator used in this grid
+      MPI_Comm comm1d = MPI_COMM_NULL;
+      MPI_Comm comm1d_aux = MPI_COMM_NULL;
       MPI_Comm comm3d = MPI_COMM_NULL;
       MPI_Comm comm3d_aux = MPI_COMM_NULL;
-      MPI_Comm parent_comm = MPI_COMM_NULL;
       int rank; //!< This task's rank in the communicator
-      int size;
       std::vector<MPI_Request> requests;
       uint numRequests;
 
