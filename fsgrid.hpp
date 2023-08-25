@@ -814,7 +814,7 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
        */
       void updateGhostCells() {
 
-         if(comm3d == comm3d_aux) return;
+         if(rank == -1) return;
 
          //TODO, faster with simultaneous isends& ireceives?
          std::array<MPI_Request, 27> receiveRequests;
