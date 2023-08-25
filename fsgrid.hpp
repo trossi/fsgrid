@@ -149,8 +149,12 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
          int status;
          int size;
 
+         ///////////////// This is a TEMPORARY solution only ////////////////
          MPI_Comm_size(parent_comm, &size);
-         size = 1; //The number of FS processes [HARD CODED FOR NOW]
+         //if(size >= 4){
+         //   size = 4; //The number of FS processes [HARD CODED FOR NOW]
+         //}
+         ////////////////////////////////////////////////////////////////////
 
          // Heuristically choose a good domain decomposition for our field size
          computeDomainDecomposition(globalSize, size, ntasks);
