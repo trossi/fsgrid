@@ -150,7 +150,7 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
          int size;
 
          MPI_Comm_size(parent_comm, &size);
-         //size = ; //The number of FS processes [HARD CODED FOR NOW]
+         size = 1; //The number of FS processes [HARD CODED FOR NOW]
 
          // Heuristically choose a good domain decomposition for our field size
          computeDomainDecomposition(globalSize, size, ntasks);
@@ -193,7 +193,7 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
              throw std::runtime_error("FSGrid communicator setup failed");
            }
 
-                    status = MPI_Comm_rank(comm3d, &rank);
+           status = MPI_Comm_rank(comm3d, &rank);
            if(status != MPI_SUCCESS) {
               std::cerr << "Getting rank failed when attempting to create FsGrid!" << std::endl;
   
@@ -279,6 +279,7 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
 
          // If non-FS process, set rank to -1 and localSize to zero and return
          if(colorFs == MPI_UNDEFINED){
+            comm3d = comm3d_aux;
             rank = -1;
             localSize[0] = 0;
             localSize[1] = 0;
@@ -543,35 +544,15 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
          std::pair<int,LocalID> retVal;
          int status;
 
-         // The rank is obtained from 'comm3d' for FS ranks
-         if(comm3d != MPI_COMM_NULL){
-            status = MPI_Cart_rank(comm3d, taskIndex.data(), &retVal.first);
-            if(status != MPI_SUCCESS) {
-              std::cerr << "Unable to find FsGrid rank (comm3d) for global ID " << id << " (coordinates [";
-              for(int i=0; i<3; i++) {
-                 std::cerr << cell[i] << ", ";
-              }
-              std::cerr << "]" << std::endl;
-              return std::pair<int,LocalID>(MPI_PROC_NULL,0);
+         status = MPI_Cart_rank(comm3d, taskIndex.data(), &retVal.first);
+         if(status != MPI_SUCCESS) {
+           std::cerr << "Unable to find FsGrid rank for global ID " << id << " (coordinates [";
+           for(int i=0; i<3; i++) {
+              std::cerr << cell[i] << ", ";
            }
-         }
-         // The rank is obtained from 'comm3d_aux' for non-FS ranks
-         else if(comm3d_aux != MPI_COMM_NULL){
-            status = MPI_Cart_rank(comm3d_aux, taskIndex.data(), &retVal.first);
-            if(status != MPI_SUCCESS) {
-              std::cerr << "Unable to find FsGrid rank (comm3d_aux) for global ID " << id << " (coordinates [";
-              for(int i=0; i<3; i++) {
-                 std::cerr << cell[i] << ", ";
-              }
-              std::cerr << "]" << std::endl;
-              return std::pair<int,LocalID>(MPI_PROC_NULL,0);
-           }
-         }
-         else{
-            std::cerr << "Rank (local): " << rank
-               << ". Cannot call 'MPI_Cart_rank()', because 'comm3d' and 'comm3d_aux' are both 'MPI_COMM_NULL'!" << std::endl;
-            throw std::runtime_error("FsGrid::getTaskForGlobalID() failed.");  
-         }
+           std::cerr << "]" << std::endl;
+           return std::pair<int,LocalID>(MPI_PROC_NULL,0);
+         }  
 
          // int RR;
          // MPI_Comm_rank(MPI_COMM_WORLD, &RR);
@@ -832,7 +813,7 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
        */
       void updateGhostCells() {
 
-         if(comm3d == MPI_COMM_NULL) return;
+         if(comm3d == comm3d_aux) return;
 
          //TODO, faster with simultaneous isends& ireceives?
          std::array<MPI_Request, 27> receiveRequests;
