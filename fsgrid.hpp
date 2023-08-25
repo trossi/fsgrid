@@ -279,11 +279,12 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
 
          // If non-FS process, set rank to -1 and localSize to zero and return
          if(colorFs == MPI_UNDEFINED){
-            comm3d = comm3d_aux;
             rank = -1;
             localSize[0] = 0;
             localSize[1] = 0;
             localSize[2] = 0;
+            comm3d = comm3d_aux;
+            comm3d_aux = MPI_COMM_NULL;
             return;
          }
 
