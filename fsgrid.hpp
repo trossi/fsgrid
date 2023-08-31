@@ -549,9 +549,7 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
 
          // Get the local task number (matches with global) from the communicator
          std::pair<int,LocalID> retVal;
-         int status;
-
-         status = MPI_Cart_rank(comm3d, taskIndex.data(), &retVal.first);
+         int status = MPI_Cart_rank(comm3d, taskIndex.data(), &retVal.first);
          if(status != MPI_SUCCESS) {
            std::cerr << "Unable to find FsGrid rank for global ID " << id << " (coordinates [";
            for(int i=0; i<3; i++) {
@@ -560,10 +558,6 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
            std::cerr << "]" << std::endl;
            return std::pair<int,LocalID>(MPI_PROC_NULL,0);
          }  
-
-         // int RR;
-         // MPI_Comm_rank(MPI_COMM_WORLD, &RR);
-         // printf("RR: %d, id: %lld, t[0]: %d, t[1]: %d,t[2]: %d, comm3d: %d, comm3d_aux: %d, retval: %d \n",RR,id,taskIndex[0],taskIndex[1],taskIndex[2],comm3d, comm3d_aux,retVal.first);fflush(stdout);MPI_Barrier(MPI_COMM_WORLD);
 
          // Determine localID of that cell within the target task
          std::array<int, 3> thatTasksStart;
