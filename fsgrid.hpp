@@ -154,14 +154,19 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
        * \param isPeriodic An array specifying, for each dimension, whether it is to be treated as periodic.
        */
    FsGrid(std::array<int32_t,3> globalSize, MPI_Comm parent_comm, std::array<bool,3> isPeriodic, FsGridCouplingInformation* coupling)
-            : globalSize(globalSize), coupling(coupling){
+            : globalSize(globalSize), coupling(coupling) {
          int status;
          int size;
 
-         MPI_Comm_size(parent_comm, &size);
+         // Get parent_comm info
+         int parentRank;
+         MPI_Comm_rank(parent_comm, &parentRank);
+         int parentSize;
+         MPI_Comm_size(parent_comm, &parentSize);
 
          // If environment variable FSGRID_PROCS is set, 
          // use that for determining the number of FS-processes
+         size = parentSize;
          if(getenv("FSGRID_PROCS") != NULL) {
             const int fsgridProcs = atoi(getenv("FSGRID_PROCS"));
             if(fsgridProcs > 0 && fsgridProcs < size)
@@ -178,22 +183,6 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
          for(unsigned int i=0; i < isPeriodic.size(); i++) {
             isPeriodicInt[i] = (int)isPeriodic[i];
          }  
-
-         // Get parent_comm info
-         int parentRank;
-         MPI_Comm_rank(parent_comm, &parentRank);
-         int parentSize;
-         MPI_Comm_size(parent_comm, &parentSize);
-
-         // Check that the number of FS processes makes sense
-         if(size > parentSize){
-            std::cerr << "Too many FS processes are being requested!" << std::endl;
-            throw std::runtime_error("FSGrid communicator setup failed");
-         }
-         else if(size < 1){
-            std::cerr << "Less than one FS process is being requested!" << std::endl;
-            throw std::runtime_error("FSGrid communicator setup failed");
-         }
 
          // Create a temporary FS subcommunicator for the MPI_Cart_create
          int colorFs = (parentRank < size) ? 1 : MPI_UNDEFINED;
