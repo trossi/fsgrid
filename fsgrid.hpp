@@ -250,6 +250,8 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
          for(int i = 0; i < (parentSize - 1) / size; i++){
             int dest = (colorFs != MPI_UNDEFINED) ? parentRank + i * size + (parentSize - 1) 
                % size + 1 : MPI_PROC_NULL;
+            if(dest >= parentSize) 
+               dest = MPI_PROC_NULL;
             MPI_Isend(&rank, 1, MPI_INT, dest, 9274, parent_comm, &request[2 * i]);
             MPI_Isend(taskPosition.data(), 3, MPI_INT, dest, 9275, parent_comm, &request[2 * i + 1]);
          }
