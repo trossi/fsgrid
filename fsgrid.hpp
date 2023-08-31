@@ -149,13 +149,16 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
          int status;
          int size;
 
-         ///////////////// This is a TEMPORARY solution only ////////////////
          MPI_Comm_size(parent_comm, &size);
-         if(size >= 4){
-           size = 4; //The number of FS processes [HARD CODED FOR NOW]
-         }
-         ////////////////////////////////////////////////////////////////////
 
+         // If environment variable FSGRID_PROCS is set, 
+         // use that for determining the number of FS-processes
+         if(getenv("FSGRID_PROCS") != NULL) {
+            const int fsgridProcs = atoi(getenv("FSGRID_PROCS"));
+            if(fsgridProcs > 0 && fsgridProcs < size)
+               size = fsgridProcs;
+         }
+       
          // Heuristically choose a good domain decomposition for our field size
          computeDomainDecomposition(globalSize, size, ntasks);
          
@@ -276,11 +279,7 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
          }
          delete[] request;
 
-         //int dest0 = (colorFs != MPI_UNDEFINED) ? parentRank + 0 * size + (parentSize - 1) 
-         //      % size + 1 : MPI_PROC_NULL;
-         //printf("Rank: %d, colorFs: %d, dest0: %d, colorAux: %d, source: %d \n",parentRank,
-         //      colorFs,dest0,colorAux,source);fflush(stdout);
-
+         // Set correct task position for non-FS ranks
          if(colorFs == MPI_UNDEFINED){
             for(int i=0; i<3; i++){
                taskPosition[i] = taskPositionAux[i];
@@ -1081,6 +1080,11 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
         return rank;
       }
 
+      /*! Get the number of ranks in the FsGrid communicator */
+      int getSize() {
+        return ntasks[0] * ntasks[1] * ntasks[2];
+      }
+
       /*! Get in which directions, if any, this grid is periodic */
       std::array<bool, 3>& getPeriodic() {
         return periodic;
@@ -1097,9 +1101,9 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
          }
          // If a non-FS rank, no need to communicate
          else{
-            int size;
-            MPI_Type_size(datatype, &size)
-            for(int i = 0; i < count * size; ++i)
+            int datatypeSize;
+            MPI_Type_size(datatype, &datatypeSize);
+            for(int i = 0; i < count * datatypeSize; ++i)
                ((char*)recvbuf)[i] = ((char*)sendbuf)[i];
             return MPI_ERR_RANK; // This is ok for a non-FS rank
          }
