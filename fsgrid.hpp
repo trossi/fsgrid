@@ -243,7 +243,8 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
                << std::endl;
            }
          }
-         
+
+#ifdef FSGRID_DEBUG
          // All FS ranks send their true comm3d rank and taskPosition data to dest
          MPI_Request *request = new MPI_Request[(parentSize - 1) / size * 2 + 2];
          for(int i = 0; i < (parentSize - 1) / size; i++){
@@ -276,6 +277,7 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
             }
          }
          delete[] request;
+#endif // FSGRID_DEBUG
 
          // Set correct task position for non-FS ranks
          if(colorFs == MPI_UNDEFINED){
