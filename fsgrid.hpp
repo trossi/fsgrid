@@ -151,9 +151,9 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
 
          ///////////////// This is a TEMPORARY solution only ////////////////
          MPI_Comm_size(parent_comm, &size);
-         //if(size >= 4){
-         //   size = 4; //The number of FS processes [HARD CODED FOR NOW]
-         //}
+         if(size >= 4){
+           size = 4; //The number of FS processes [HARD CODED FOR NOW]
+         }
          ////////////////////////////////////////////////////////////////////
 
          // Heuristically choose a good domain decomposition for our field size
@@ -281,6 +281,26 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
          //printf("Rank: %d, colorFs: %d, dest0: %d, colorAux: %d, source: %d \n",parentRank,
          //      colorFs,dest0,colorAux,source);fflush(stdout);
 
+         if(colorFs == MPI_UNDEFINED){
+            for(int i=0; i<3; i++){
+               taskPosition[i] = taskPositionAux[i];
+            }
+         }
+
+         // Determine size of our local grid
+         for(int i=0; i<3; i++) {
+            localSize[i] = calcLocalSize(globalSize[i],ntasks[i], taskPosition[i]);
+            localStart[i] = calcLocalStart(globalSize[i],ntasks[i], taskPosition[i]);
+         }
+
+         if(  localSize[0] == 0 || (globalSize[0] > stencil && localSize[0] < stencil)
+           || localSize[1] == 0 || (globalSize[1] > stencil && localSize[1] < stencil)
+           || localSize[2] == 0 || (globalSize[2] > stencil && localSize[2] < stencil)) {
+            std::cerr << "FSGrid space partitioning leads to a space that is too small on Rank " << rank << "." <<std::endl;
+            std::cerr << "Please run with a different number of Tasks, so that space is better divisible." <<std::endl;
+            throw std::runtime_error("FSGrid too small domains");
+         }
+
          // If non-FS process, set rank to -1 and localSize to zero and return
          if(colorFs == MPI_UNDEFINED){
             rank = -1;
@@ -358,21 +378,6 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
                   }
                }
             }
-         }
-
-
-         // Determine size of our local grid
-         for(int i=0; i<3; i++) {
-            localSize[i] = calcLocalSize(globalSize[i],ntasks[i], taskPosition[i]);
-            localStart[i] = calcLocalStart(globalSize[i],ntasks[i], taskPosition[i]);
-         }
-
-         if(  localSize[0] == 0 || (globalSize[0] > stencil && localSize[0] < stencil)
-           || localSize[1] == 0 || (globalSize[1] > stencil && localSize[1] < stencil)
-           || localSize[2] == 0 || (globalSize[2] > stencil && localSize[2] < stencil)) {
-            std::cerr << "FSGrid space partitioning leads to a space that is too small on Rank " << rank << "." <<std::endl;
-            std::cerr << "Please run with a different number of Tasks, so that space is better divisible." <<std::endl;
-            throw std::runtime_error("FSGrid too small domains");
          }
 
          // Allocate local storage array
@@ -1085,7 +1090,19 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
        * Function syntax is identical to MPI_Allreduce, except the final (communicator
        * argument will not be needed) */
       int Allreduce(void* sendbuf, void* recvbuf, int count, MPI_Datatype datatype, MPI_Op op) {
-         return MPI_Allreduce(sendbuf, recvbuf, count, datatype, op, comm3d);
+         
+         // If a normal FS-rank
+         if(rank != -1){
+            return MPI_Allreduce(sendbuf, recvbuf, count, datatype, op, comm3d);
+         }
+         // If a non-FS rank, no need to communicate
+         else{
+            int size;
+            MPI_Type_size(datatype, &size)
+            for(int i = 0; i < count * size; ++i)
+               ((char*)recvbuf)[i] = ((char*)sendbuf)[i];
+            return MPI_ERR_RANK; // This is ok for a non-FS rank
+         }
       }
 
    private:
