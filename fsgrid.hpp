@@ -64,24 +64,33 @@ struct FsGridTools{
 
 
       //! Helper function to optimize decomposition of this grid over the given number of tasks
-      static void computeDomainDecomposition(const std::array<int, 3>& GlobalSize, int nProcs, std::array<int,3>& processDomainDecomposition) {
+      static void computeDomainDecomposition(const std::array<int, 3>& GlobalSize, int nProcs, std::array<int,3>& processDomainDecomposition, int stencilSize=1) {
          std::array<double, 3> systemDim;
          std::array<double, 3 > processBox;
+         std::array<int, 3> minDomainSize;
          double optimValue = std::numeric_limits<double>::max();
          for(int i = 0; i < 3; i++) {
             systemDim[i] = (double)GlobalSize[i];
+            if(GlobalSize[i] == 1) {
+               // In 2D simulation domains, the "thin" dimension can be a single cell thick.
+               minDomainSize[i] = 1;
+            } else {
+               // Otherwise, it needs to be at least as large as our ghost
+               // stencil, so that ghost communication remains consistent.
+               minDomainSize[i] = stencilSize;
+            }
          }
          processDomainDecomposition = {1, 1, 1};
          for (int i = 1; i <= std::min(nProcs, GlobalSize[0]); i++) {
-            processBox[0] = std::max(systemDim[0]/i, 1.0);
+            processBox[0] = std::max(systemDim[0]/i, (double)minDomainSize[0]);
             for (int j = 1; j <= std::min(nProcs, GlobalSize[1]) ; j++) {
                if( i * j  > nProcs )
                   break;
-               processBox[1] = std::max(systemDim[1]/j, 1.0);
+               processBox[1] = std::max(systemDim[1]/j, (double)minDomainSize[1]);
                for (int k = 1; k <= std::min(nProcs, GlobalSize[2]); k++) {
                   if( i * j * k > nProcs )
                      break;
-                  processBox[2] = std::max(systemDim[2]/k, 1.0);
+                  processBox[2] = std::max(systemDim[2]/k, (double)minDomainSize[2]);
                   double value = 
                      10 * processBox[0] * processBox[1] * processBox[2] + 
                      (i > 1 ? processBox[1] * processBox[2]: 0) +
@@ -152,7 +161,7 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
          status = MPI_Comm_size(parent_comm, &size);
 
          // Heuristically choose a good domain decomposition for our field size
-         computeDomainDecomposition(globalSize, size, ntasks);
+         computeDomainDecomposition(globalSize, size, ntasks, stencil);
          
          //set private array
          periodic = isPeriodic;
