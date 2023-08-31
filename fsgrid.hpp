@@ -146,14 +146,14 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
       typedef int64_t GlobalID;
 
    // Legacy constructor from coupling reference
-   FsGrid(std::array<int32_t,3> globalSize, MPI_Comm& parent_comm, std::array<bool,3> isPeriodic, FsGridCouplingInformation& coupling) : FsGrid(globalSize, parent_comm, isPeriodic, &coupling) {}
+   FsGrid(std::array<int32_t,3> globalSize, MPI_Comm parent_comm, std::array<bool,3> isPeriodic, FsGridCouplingInformation& coupling) : FsGrid(globalSize, parent_comm, isPeriodic, &coupling) {}
 
       /*! Constructor for this grid.
        * \param globalSize Cell size of the global simulation domain.
        * \param MPI_Comm The MPI communicator this grid should use.
        * \param isPeriodic An array specifying, for each dimension, whether it is to be treated as periodic.
        */
-   FsGrid(std::array<int32_t,3> globalSize, MPI_Comm& parent_comm, std::array<bool,3> isPeriodic, FsGridCouplingInformation* coupling)
+   FsGrid(std::array<int32_t,3> globalSize, MPI_Comm parent_comm, std::array<bool,3> isPeriodic, FsGridCouplingInformation* coupling)
             : globalSize(globalSize), coupling(coupling){
          int status;
          int size;
