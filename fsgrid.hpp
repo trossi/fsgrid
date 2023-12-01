@@ -27,7 +27,7 @@
 #include <stdint.h>
 #include <cassert>
 #include <stdio.h>
-
+#include <iomanip>
 
 
 
@@ -66,7 +66,7 @@ struct FsGridTools{
 
 
       //! Helper function to optimize decomposition of this grid over the given number of tasks
-      static void computeDomainDecomposition(const std::array<int, 3>& GlobalSize, int nProcs, std::array<int,3>& processDomainDecomposition, int stencilSize=1) {
+      static void computeDomainDecomposition(const std::array<int, 3>& GlobalSize, int64_t nProcs, std::array<int,3>& processDomainDecomposition, int stencilSize=1) {
          std::array<int64_t, 3> systemDim;
          std::array<int64_t, 3> processBox;
          std::array<int64_t, 3> minDomainSize;
@@ -83,27 +83,37 @@ struct FsGridTools{
             }
          }
          processDomainDecomposition = {1, 1, 1};
-         for (int i = 1; i <= std::min(nProcs, GlobalSize[0]); i++) {
-            processBox[0] = std::max(systemDim[0]/i, minDomainSize[0]);
-            std::cerr << "i="<<i<<": trying processBox[0] = " << processBox[0] << "\n";
-            for (int j = 1; j <= std::min(nProcs, GlobalSize[1]) ; j++) {
+         for (int i = 1; i <= std::min(nProcs, GlobalSize[0]/minDomainSize[0]); i++) {
+            // if(systemDim[0]/i < minDomainSize[0])
+            //    break; // i is increasing, can safely break
+            processBox[0] = systemDim[0]/i;
+            // std::cerr << "i="<<i<<": trying processBox[0] = " << processBox[0] << "\n";
+            for (int j = 1; j <= std::min(nProcs, GlobalSize[1]/minDomainSize[1]) ; j++) {
                if( i * j  > nProcs ){
-                  std::cerr << "i * j  > nProcs for i =" << i << ", j = " << j << "\n";
                   break;
                }
-               processBox[1] = std::max(systemDim[1]/j, minDomainSize[1]);
-               std::cerr << "j="<<j<<": trying processBox[1] = " << processBox[1] << "\n";
-               for (int k = 1; k <= std::min(nProcs, GlobalSize[2]); k++) {
+               // if(systemDim[1]/j < minDomainSize[1])
+               //    break; // j is increasing, can safely break
+               processBox[1] = systemDim[1]/j;
+               // std::cerr << "j="<<j<<": trying processBox[1] = " << processBox[1] << "\n";
+               for (int k = 1; k <= std::min(nProcs, GlobalSize[2]/minDomainSize[2]); k++) {
                   if( i * j * k > nProcs )
                      break;
-                  processBox[2] = std::max(systemDim[2]/k, minDomainSize[2]);
-                  std::cerr << "k="<<k<<": trying processBox[2] = " << processBox[2] << "\n";
+                  // if(systemDim[2]/k < minDomainSize[2])
+                  //    break; // j is increasing, can safely break
+                  processBox[2] = systemDim[2]/k;
+
                   int64_t value = 
                      10 * processBox[0] * processBox[1] * processBox[2] + 
                      (i > 1 ? processBox[1] * processBox[2]: 0) +
                      (j > 1 ? processBox[0] * processBox[2]: 0) +
                      (k > 1 ? processBox[0] * processBox[1]: 0);
-                  std::cerr << "value = " << value << ", optimValue = " << optimValue << "\n";
+                  std::cerr << std::setw(4) << "i,j,k = " << std::setw(4)<< i << ",\t" 
+                           << std::setw(4)<< j << ",\t" << std::setw(4)<< k <<":\t = " 
+                           << std::setw(4)<< processBox[0] << ",\t"<< std::setw(4) 
+                           << processBox[1] << ",\t"<< std::setw(4) << processBox[2] 
+                           <<"\t value = " << value << ", optimValue = " << optimValue 
+                           << ". Is " << 10 * processBox[0] * processBox[1] * processBox[2] <<" a const?\n";
 
                   if(value < optimValue ){
                      optimValue = value;
@@ -120,7 +130,9 @@ struct FsGridTools{
             std::cerr << "FSGrid domain decomposition failed, are you running on a prime number of tasks?" << std::endl;
             throw std::runtime_error("FSGrid computeDomainDecomposition failed");
          }
+         std::cerr << "done "<< processDomainDecomposition[0] << " " << processDomainDecomposition[1] << " " << processDomainDecomposition[2] << " \n\n\n\n";
       }
+      
 
 };
 
@@ -154,22 +166,32 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
       typedef int64_t GlobalID;
 
    // Legacy constructor from coupling reference
-   FsGrid(std::array<int32_t,3> globalSize, MPI_Comm parent_comm, std::array<bool,3> isPeriodic, FsGridCouplingInformation& coupling) : FsGrid(globalSize, parent_comm, isPeriodic, &coupling) {}
+   FsGrid(std::array<int32_t,3> globalSize, MPI_Comm parent_comm, std::array<bool,3> isPeriodic, FsGridCouplingInformation& coupling, std::array<int, 3> decomposition = {0,0,0}) : FsGrid(globalSize, parent_comm, isPeriodic, &coupling) {}
 
       /*! Constructor for this grid.
        * \param globalSize Cell size of the global simulation domain.
        * \param MPI_Comm The MPI communicator this grid should use.
        * \param isPeriodic An array specifying, for each dimension, whether it is to be treated as periodic.
        */
-   FsGrid(std::array<int32_t,3> globalSize, MPI_Comm parent_comm, std::array<bool,3> isPeriodic, FsGridCouplingInformation* coupling)
+   FsGrid(std::array<int32_t,3> globalSize, MPI_Comm parent_comm, std::array<bool,3> isPeriodic, FsGridCouplingInformation* coupling, std::array<int, 3> decomposition = {0,0,0})
             : globalSize(globalSize), coupling(coupling) {
          int status;
          int size;
 
          status = MPI_Comm_size(parent_comm, &size);
 
-         // Heuristically choose a good domain decomposition for our field size
-         computeDomainDecomposition(globalSize, size, ntasks, stencil);
+         if (decomposition[0] == 0 && decomposition[1] == 0 && decomposition[2] == 0){
+            // If decomposition isn't pre-defined, heuristically choose a good domain decomposition for our field size
+            computeDomainDecomposition(globalSize, size, ntasks, stencil);
+         }else{
+            if (ntasks[0]*ntasks[1]*ntasks[2] != size){
+               std::cerr << "Given decomposition does not distribute to the number of tasks given" << std::endl;
+               throw std::runtime_error("Given decomposition does not distribute to the number of tasks given");
+            }
+            ntasks[0] = decomposition[0];
+            ntasks[1] = decomposition[1];
+            ntasks[2] = decomposition[2];
+         }
          
          //set private array
          periodic = isPeriodic;
@@ -554,7 +576,7 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
                   // Calculate LocalID for this cell
                   LocalID thisCell = LocalIDForCoords(x,y,z);
                   assert(numRequests < requests.size());
-                  assert(thisCell < coupling->externalRank.size());
+                  assert(thisCell < (int64_t)coupling->externalRank.size());
                   status = MPI_Irecv(&coupling->externalRank[thisCell], 1, MPI_INT, MPI_ANY_SOURCE, thisCell, comm3d,
                         &requests[numRequests++]);
                   if(status != MPI_SUCCESS) {
@@ -979,6 +1001,11 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
        * argument will not be needed) */
       int Allreduce(void* sendbuf, void* recvbuf, int count, MPI_Datatype datatype, MPI_Op op) {
          return MPI_Allreduce(sendbuf, recvbuf, count, datatype, op, comm3d);
+      }
+
+      /*! Get the decomposition array*/
+      std::array<int, 3>& getDecomposition(){
+         return ntasks;
       }
 
    private:
