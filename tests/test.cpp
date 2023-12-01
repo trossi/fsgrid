@@ -34,7 +34,8 @@ int main(int argc, char** argv) {
    std::array<int32_t, 3> globalSize{20,20,1};
    std::array<bool, 3> isPeriodic{false,false,true};
    {
-      FsGrid<int,1> testGrid(globalSize, MPI_COMM_WORLD, isPeriodic);
+      FsGridCouplingInformation gridCoupling;
+      FsGrid<int,1> testGrid(globalSize, MPI_COMM_WORLD, isPeriodic, gridCoupling);
 /*
       if(rank == 0) {
          std::cerr << " --- Test task mapping functions ---" << std::endl;

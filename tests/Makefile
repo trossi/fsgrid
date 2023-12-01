@@ -1,4 +1,4 @@
-CXX=CC
+CXX=mpic++
 CXXFLAGS= -O3 -std=c++11 -march=native -g -Wall
 
 all: benchmark test ddtest

@@ -23,7 +23,8 @@
 
 template<class T, int stencil> void timeit(std::array<int32_t, 3> globalSize, std::array<bool, 3> isPeriodic, int iterations){
    double t1,t2;   
-   FsGrid<T ,stencil> testGrid(globalSize, MPI_COMM_WORLD, isPeriodic);
+   FsGridCouplingInformation gridCoupling;
+   FsGrid<T ,stencil> testGrid(globalSize, MPI_COMM_WORLD, isPeriodic, gridCoupling);
    int rank,size;
    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
    MPI_Comm_size(MPI_COMM_WORLD, &size);

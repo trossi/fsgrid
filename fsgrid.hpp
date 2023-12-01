@@ -26,6 +26,8 @@
 #include <limits>
 #include <stdint.h>
 #include <cassert>
+#include <stdio.h>
+
 
 
 
@@ -65,12 +67,12 @@ struct FsGridTools{
 
       //! Helper function to optimize decomposition of this grid over the given number of tasks
       static void computeDomainDecomposition(const std::array<int, 3>& GlobalSize, int nProcs, std::array<int,3>& processDomainDecomposition, int stencilSize=1) {
-         std::array<double, 3> systemDim;
-         std::array<double, 3 > processBox;
-         std::array<int, 3> minDomainSize;
-         double optimValue = std::numeric_limits<double>::max();
+         std::array<int64_t, 3> systemDim;
+         std::array<int64_t, 3> processBox;
+         std::array<int64_t, 3> minDomainSize;
+         int64_t optimValue = std::numeric_limits<int64_t>::max();
          for(int i = 0; i < 3; i++) {
-            systemDim[i] = (double)GlobalSize[i];
+            systemDim[i] = GlobalSize[i];
             if(GlobalSize[i] == 1) {
                // In 2D simulation domains, the "thin" dimension can be a single cell thick.
                minDomainSize[i] = 1;
@@ -82,20 +84,26 @@ struct FsGridTools{
          }
          processDomainDecomposition = {1, 1, 1};
          for (int i = 1; i <= std::min(nProcs, GlobalSize[0]); i++) {
-            processBox[0] = std::max(systemDim[0]/i, (double)minDomainSize[0]);
+            processBox[0] = std::max(systemDim[0]/i, minDomainSize[0]);
+            std::cerr << "i="<<i<<": trying processBox[0] = " << processBox[0] << "\n";
             for (int j = 1; j <= std::min(nProcs, GlobalSize[1]) ; j++) {
-               if( i * j  > nProcs )
+               if( i * j  > nProcs ){
+                  std::cerr << "i * j  > nProcs for i =" << i << ", j = " << j << "\n";
                   break;
-               processBox[1] = std::max(systemDim[1]/j, (double)minDomainSize[1]);
+               }
+               processBox[1] = std::max(systemDim[1]/j, minDomainSize[1]);
+               std::cerr << "j="<<j<<": trying processBox[1] = " << processBox[1] << "\n";
                for (int k = 1; k <= std::min(nProcs, GlobalSize[2]); k++) {
                   if( i * j * k > nProcs )
                      break;
-                  processBox[2] = std::max(systemDim[2]/k, (double)minDomainSize[2]);
-                  double value = 
+                  processBox[2] = std::max(systemDim[2]/k, minDomainSize[2]);
+                  std::cerr << "k="<<k<<": trying processBox[2] = " << processBox[2] << "\n";
+                  int64_t value = 
                      10 * processBox[0] * processBox[1] * processBox[2] + 
                      (i > 1 ? processBox[1] * processBox[2]: 0) +
                      (j > 1 ? processBox[0] * processBox[2]: 0) +
                      (k > 1 ? processBox[0] * processBox[1]: 0);
+                  std::cerr << "value = " << value << ", optimValue = " << optimValue << "\n";
 
                   if(value < optimValue ){
                      optimValue = value;
@@ -107,7 +115,7 @@ struct FsGridTools{
             }
          }
 
-         if(optimValue == std::numeric_limits<double>::max() ||
+         if(optimValue == std::numeric_limits<int64_t>::max() ||
                processDomainDecomposition[0] * processDomainDecomposition[1] * processDomainDecomposition[2] != nProcs) {
             std::cerr << "FSGrid domain decomposition failed, are you running on a prime number of tasks?" << std::endl;
             throw std::runtime_error("FSGrid computeDomainDecomposition failed");
