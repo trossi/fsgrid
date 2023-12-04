@@ -1,5 +1,7 @@
 CXX=mpic++
-CXXFLAGS= -O3 -std=c++11 -march=native -g -Wall
+# CXXFLAGS= -O3 -std=c++17 -ffast-math -march=native -g -Wall
+CXXFLAGS= -O3 -std=c++17 -march=native -g -Wall
+# CXXFLAGS= -O0 -std=c++17 -march=native -g -Wall
 
 all: clean benchmark test ddtest
 

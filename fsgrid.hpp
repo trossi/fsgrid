@@ -28,7 +28,7 @@
 #include <cassert>
 #include <stdio.h>
 #include <iomanip>
-
+#include <algorithm>
 
 
 
@@ -49,89 +49,163 @@ struct FsGridTools{
          return my_n * n_per_task + remainder;
       }
    }
-      //! Helper function: calculate size of the local coordinate space for the given dimension
-      // \param globalCells Number of cells in the global Simulation, in this dimension
-      // \param ntasks Total number of tasks in this dimension
-      // \param my_n This task's position in this dimension
-      // \return Nmuber of cells for this task's local domain (actual cells, not counting ghost cells)
-      static int32_t calcLocalSize(int32_t globalCells, int ntasks, int my_n) {
-         int n_per_task = globalCells/ntasks;
-         int remainder = globalCells%ntasks;
-         if(my_n < remainder) {
-            return n_per_task+1;
+   //! Helper function: calculate size of the local coordinate space for the given dimension
+   // \param globalCells Number of cells in the global Simulation, in this dimension
+   // \param ntasks Total number of tasks in this dimension
+   // \param my_n This task's position in this dimension
+   // \return Number of cells for this task's local domain (actual cells, not counting ghost cells)
+   static int32_t calcLocalSize(int32_t globalCells, int ntasks, int my_n) {
+      int n_per_task = globalCells/ntasks;
+      int remainder = globalCells%ntasks;
+      if(my_n < remainder) {
+         return n_per_task+1;
+      } else {
+         return n_per_task;
+      }
+   }
+
+   //! Helper function to optimize decomposition of this grid over the given number of tasks, for backward compatibility.
+   static void computeLegacyDomainDecomposition(const std::array<int, 3>& GlobalSize, int nProcs, std::array<int,3>& processDomainDecomposition, int stencilSize=1) {
+      std::array<double, 3> systemDim;
+      std::array<double, 3> processBox;
+      std::array<int, 3> minDomainSize;
+      double optimValue = std::numeric_limits<double>::max();
+      for(int i = 0; i < 3; i++) {
+         systemDim[i] = (double)GlobalSize[i];
+         if(GlobalSize[i] == 1) {
+            // In 2D simulation domains, the "thin" dimension can be a single cell thick.
+            minDomainSize[i] = 1;
          } else {
-            return n_per_task;
+            // Otherwise, it needs to be at least as large as our ghost
+            // stencil, so that ghost communication remains consistent.
+            minDomainSize[i] = stencilSize;
          }
       }
+      processDomainDecomposition = {1, 1, 1};
+      for (int64_t i = 1; i <= std::min(nProcs, GlobalSize[0]); i++) {
 
+         for (int64_t j = 1; j <= std::min(nProcs, GlobalSize[1]) ; j++) {
+            if( i * j  > nProcs )
+               break;
 
-      //! Helper function to optimize decomposition of this grid over the given number of tasks
-      static void computeDomainDecomposition(const std::array<int, 3>& GlobalSize, int64_t nProcs, std::array<int,3>& processDomainDecomposition, int stencilSize=1) {
-         std::array<int64_t, 3> systemDim;
-         std::array<int64_t, 3> processBox;
-         std::array<int64_t, 3> minDomainSize;
-         int64_t optimValue = std::numeric_limits<int64_t>::max();
-         for(int i = 0; i < 3; i++) {
-            systemDim[i] = GlobalSize[i];
-            if(GlobalSize[i] == 1) {
-               // In 2D simulation domains, the "thin" dimension can be a single cell thick.
-               minDomainSize[i] = 1;
-            } else {
-               // Otherwise, it needs to be at least as large as our ghost
-               // stencil, so that ghost communication remains consistent.
-               minDomainSize[i] = stencilSize;
-            }
-         }
-         processDomainDecomposition = {1, 1, 1};
-         for (int i = 1; i <= std::min(nProcs, GlobalSize[0]/minDomainSize[0]); i++) {
-            // if(systemDim[0]/i < minDomainSize[0])
-            //    break; // i is increasing, can safely break
-            processBox[0] = systemDim[0]/i;
-            // std::cerr << "i="<<i<<": trying processBox[0] = " << processBox[0] << "\n";
-            for (int j = 1; j <= std::min(nProcs, GlobalSize[1]/minDomainSize[1]) ; j++) {
-               if( i * j  > nProcs ){
+            for (int64_t k = 1; k <= std::min(nProcs, GlobalSize[2]); k++) {
+               if( i * j * k > nProcs )
                   break;
+               if( i * j * k != nProcs )
+                  continue;
+               processBox[0] = std::max(systemDim[0]/i, (double)minDomainSize[0]);
+               processBox[1] = std::max(systemDim[1]/j, (double)minDomainSize[1]);
+               processBox[2] = std::max(systemDim[2]/k, (double)minDomainSize[2]); 
+               double value = 
+                  10ll * processBox[0] * processBox[1] * processBox[2] + 
+                  (i > 1ll ? processBox[1] * processBox[2]: 0ll) +
+                  (j > 1ll ? processBox[0] * processBox[2]: 0ll) +
+                  (k > 1ll ? processBox[0] * processBox[1]: 0ll);
+
+               if(value < optimValue ){
+                  optimValue = value;
+                  processDomainDecomposition[0] = i;
+                  processDomainDecomposition[1] = j;
+                  processDomainDecomposition[2] = k;
                }
-               // if(systemDim[1]/j < minDomainSize[1])
-               //    break; // j is increasing, can safely break
+                        //       std::cerr << std::setw(4) << "i,j,k = " << std::setw(4)<< i << ",\t" 
+                        // << std::setw(4)<< j << ",\t" << std::setw(4)<< k <<":\t, pb = " 
+                        // << std::setw(4)<< processBox[0] << ",\t"<< std::setw(4) 
+                        // << processBox[1] << ",\t"<< std::setw(4) << processBox[2] 
+                        // <<"\t value = " << value << ", optimValue = " << optimValue 
+                        // << ". Is " << 10 * processBox[0] * processBox[1] * processBox[2] <<" a const?\n";
+
+
+            }
+         }
+      }
+
+      if(optimValue == std::numeric_limits<double>::max() ||
+            processDomainDecomposition[0] * processDomainDecomposition[1] * processDomainDecomposition[2] != nProcs) {
+         std::cerr << "FSGrid domain decomposition failed, are you running on a prime number of tasks?" << std::endl;
+         throw std::runtime_error("FSGrid computeDomainDecomposition failed");
+      }
+      std::cerr << "Legacy done "<< processDomainDecomposition[0] << " " << processDomainDecomposition[1] << " " << processDomainDecomposition[2] << " \n\n\n\n";
+   }
+      
+   //! Helper function to optimize decomposition of this grid over the given number of tasks
+   static void computeDomainDecomposition(const std::array<int, 3>& GlobalSize, int64_t nProcs, std::array<int,3>& processDomainDecomposition, int stencilSize=1, int choose=0) {
+      // if(legacy)
+      // {
+      //    computeLegacyDomainDecomposition(GlobalSize, nProcs, processDomainDecomposition, stencilSize);
+      //    return;
+      // }
+      std::array<int64_t, 3> systemDim;
+      std::array<int64_t, 3> processBox;
+      std::array<int64_t, 3> minDomainSize;
+      int64_t optimValue = std::numeric_limits<int64_t>::max();
+      std::vector<std::pair<int,std::array<int64_t,3>>> scored_decompositions;
+      scored_decompositions.push_back(std::pair<int,std::array<int64_t,3>>(optimValue,{0,0,0}));
+      for(int i = 0; i < 3; i++) {
+         systemDim[i] = GlobalSize[i];
+         if(GlobalSize[i] == 1) {
+            // In 2D simulation domains, the "thin" dimension can be a single cell thick.
+            minDomainSize[i] = 1;
+         } else {
+            // Otherwise, it needs to be at least as large as our ghost
+            // stencil, so that ghost communication remains consistent.
+            minDomainSize[i] = stencilSize;
+         }
+      }
+      processDomainDecomposition = {1, 1, 1};
+      for (int64_t i = 1; i <= std::min(nProcs, GlobalSize[0]/minDomainSize[0]); i++) {
+         for (int64_t j = 1; j <= std::min(nProcs, GlobalSize[1]/minDomainSize[1]) ; j++) {
+            if( i * j  > nProcs ){
+               break;
+            }
+            for (int64_t k = 1; k <= std::min(nProcs, GlobalSize[2]/minDomainSize[2]); k++) {
+               if( i * j * k != nProcs ) // No need to optimize an incompatible DD
+                  continue;
+               if( i * j * k > nProcs )
+                  break;
+               processBox[0] = systemDim[0]/i;
                processBox[1] = systemDim[1]/j;
-               // std::cerr << "j="<<j<<": trying processBox[1] = " << processBox[1] << "\n";
-               for (int k = 1; k <= std::min(nProcs, GlobalSize[2]/minDomainSize[2]); k++) {
-                  if( i * j * k > nProcs )
-                     break;
-                  // if(systemDim[2]/k < minDomainSize[2])
-                  //    break; // j is increasing, can safely break
-                  processBox[2] = systemDim[2]/k;
+               processBox[2] = systemDim[2]/k;
 
-                  int64_t value = 
-                     10 * processBox[0] * processBox[1] * processBox[2] + 
-                     (i > 1 ? processBox[1] * processBox[2]: 0) +
-                     (j > 1 ? processBox[0] * processBox[2]: 0) +
-                     (k > 1 ? processBox[0] * processBox[1]: 0);
-                  std::cerr << std::setw(4) << "i,j,k = " << std::setw(4)<< i << ",\t" 
-                           << std::setw(4)<< j << ",\t" << std::setw(4)<< k <<":\t = " 
-                           << std::setw(4)<< processBox[0] << ",\t"<< std::setw(4) 
-                           << processBox[1] << ",\t"<< std::setw(4) << processBox[2] 
-                           <<"\t value = " << value << ", optimValue = " << optimValue 
-                           << ". Is " << 10 * processBox[0] * processBox[1] * processBox[2] <<" a const?\n";
+               int nonsingletondims = ((bool)(i-1)+(bool)(j-1)+(bool)(k-1));
 
-                  if(value < optimValue ){
-                     optimValue = value;
-                     processDomainDecomposition[0] = i;
-                     processDomainDecomposition[1] = j;
-                     processDomainDecomposition[2] = k;
+               int64_t value = 
+                  (i > 1 ? processBox[1] * processBox[2]: 0) +
+                  (j > 1 ? processBox[0] * processBox[2]: 0) +
+                  (k > 1 ? processBox[0] * processBox[1]: 0) +
+                  nonsingletondims;
+
+               if(value <= optimValue ){
+                  optimValue = value;
+                  if(value < scored_decompositions.back().first){
+                     scored_decompositions.clear();
                   }
+                  scored_decompositions.push_back(std::pair<int64_t, std::array<int64_t,3>>(value, {i,j,k}));
                }
             }
          }
-
-         if(optimValue == std::numeric_limits<int64_t>::max() ||
-               processDomainDecomposition[0] * processDomainDecomposition[1] * processDomainDecomposition[2] != nProcs) {
-            std::cerr << "FSGrid domain decomposition failed, are you running on a prime number of tasks?" << std::endl;
-            throw std::runtime_error("FSGrid computeDomainDecomposition failed");
-         }
-         std::cerr << "done "<< processDomainDecomposition[0] << " " << processDomainDecomposition[1] << " " << processDomainDecomposition[2] << " \n\n\n\n";
       }
+
+      std::cerr << "Number of equal minimal-communication decompositions found: " << scored_decompositions.size() << "\n";
+
+      for (auto kv : scored_decompositions){
+         std::cerr << "Decomposition " << kv.second[0] <<","<<kv.second[1]<<","<<kv.second[2]<<  " "<< " for processBox size " <<
+      systemDim[0]/kv.second[0] << " " << systemDim[1]/kv.second[1] << " " << systemDim[2]/kv.second[2] <<"\n";
+      }
+      processDomainDecomposition[0] = scored_decompositions[choose].second[0];
+      processDomainDecomposition[1] = scored_decompositions[choose].second[1];
+      processDomainDecomposition[2] = scored_decompositions[choose].second[2];
+
+
+      if(optimValue == std::numeric_limits<int64_t>::max() ||
+            processDomainDecomposition[0] * processDomainDecomposition[1] * processDomainDecomposition[2] != nProcs) {
+         std::cerr << "FSGrid domain decomposition failed, are you running on a prime number of tasks?" << std::endl;
+         throw std::runtime_error("FSGrid computeDomainDecomposition failed");
+      }
+      std::cerr << "done "<< processDomainDecomposition[0] << " " << processDomainDecomposition[1] << " " << processDomainDecomposition[2] << " / " <<
+      systemDim[0]/processDomainDecomposition[0] << " " << systemDim[1]/processDomainDecomposition[1] << " " << systemDim[2]/processDomainDecomposition[2] <<
+      " \n\n\n\n";
+   }
       
 
 };

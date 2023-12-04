@@ -42,6 +42,11 @@ int main(int argc, char **argv){
    sys[1] = atof(argv[2]);
    sys[2] = atof(argv[3]);
    uint nProcs = atoi(argv[4]);
+   FsGridTools::computeLegacyDomainDecomposition(sys, nProcs, processDomainDecomposition,1);
+   printf("Legacy-DD of %d %d %d for %d processes is %d %d %d \n", 
+          sys[0], sys[1], sys[2], nProcs,
+          processDomainDecomposition[0], processDomainDecomposition[1], processDomainDecomposition[2]);
+
 
    FsGridTools::computeDomainDecomposition(sys, nProcs, processDomainDecomposition);
    printf("DD of %d %d %d for %d processes is %d %d %d \n", 
