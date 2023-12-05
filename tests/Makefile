@@ -3,7 +3,7 @@ CXX=mpic++
 CXXFLAGS= -O3 -std=c++17 -march=native -g -Wall
 # CXXFLAGS= -O0 -std=c++17 -march=native -g -Wall
 
-all: clean benchmark test ddtest
+all: clean ddtest
 
 benchmark: benchmark.cpp ../fsgrid.hpp
 	$(CXX) $(CXXFLAGS) -o $@ $<

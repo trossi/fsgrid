@@ -29,7 +29,7 @@
 
 int main(int argc, char **argv){
   
-   std::array<int,3>  sys;
+   std::array<uint64_t,3>  sys;
    std::array<int,3> processDomainDecomposition;
 
    if(argc != 5) {
