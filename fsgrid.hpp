@@ -129,12 +129,15 @@ struct FsGridTools{
    }
       
    //! Helper function to optimize decomposition of this grid over the given number of tasks
-   static void computeDomainDecomposition(const std::array<uint64_t, 3>& GlobalSize, uint64_t nProcs, std::array<int,3>& processDomainDecomposition, int stencilSize=1, int choose=0) {
+   static void computeDomainDecomposition(const std::array<uint64_t, 3>& GlobalSize, uint64_t nProcs, std::array<int,3>& processDomainDecomposition, int stencilSize=1, bool verbose = false) {
       // if(legacy)
       // {
       //    computeLegacyDomainDecomposition(GlobalSize, nProcs, processDomainDecomposition, stencilSize);
       //    return;
       // }
+      int myRank;
+      MPI_Comm_rank(MPI_COMM_WORLD, &myRank); // TODO allow for separate communicator
+
       std::array<uint64_t, 3> systemDim;
       std::array<uint64_t, 3> processBox;
       std::array<uint64_t, 3> minDomainSize;
@@ -186,25 +189,35 @@ struct FsGridTools{
          }
       }
 
-      std::cerr << "Number of equal minimal-communication decompositions found: " << scored_decompositions.size() << "\n";
-
-      for (auto kv : scored_decompositions){
-         std::cerr << "Decomposition " << kv.second[0] <<","<<kv.second[1]<<","<<kv.second[2]<<  " "<< " for processBox size " <<
-      systemDim[0]/kv.second[0] << " " << systemDim[1]/kv.second[1] << " " << systemDim[2]/kv.second[2] <<"\n";
+      if(myRank==0 && verbose){
+         std::cerr << "Number of equal minimal-surface decompositions found: " << scored_decompositions.size() << "\n";
       }
-      processDomainDecomposition[0] = (int)scored_decompositions[choose].second[0];
-      processDomainDecomposition[1] = (int)scored_decompositions[choose].second[1];
-      processDomainDecomposition[2] = (int)scored_decompositions[choose].second[2];
+      if(myRank==0 && verbose){
+         for (auto kv : scored_decompositions){
+            
+            std::cerr << "Decomposition " << kv.second[0] <<","<<kv.second[1]<<","<<kv.second[2]<<  " "<< " for processBox size " <<
+            systemDim[0]/kv.second[0] << " " << systemDim[1]/kv.second[1] << " " << systemDim[2]/kv.second[2] <<"\n";
+         }
+      }
+
+      // Taking the first scored_decomposition (smallest X decomposition)
+      processDomainDecomposition[0] = (int)scored_decompositions[0].second[0];
+      processDomainDecomposition[1] = (int)scored_decompositions[0].second[1];
+      processDomainDecomposition[2] = (int)scored_decompositions[0].second[2];
 
 
       if(optimValue == std::numeric_limits<int64_t>::max() ||
             processDomainDecomposition[0] * processDomainDecomposition[1] * processDomainDecomposition[2] != nProcs) {
-         std::cerr << "FSGrid domain decomposition failed, are you running on a prime number of tasks?" << std::endl;
+         if(myRank==0){
+            std::cerr << "FSGrid domain decomposition failed, are you running on a prime number of tasks?" << std::endl;
+         }
          throw std::runtime_error("FSGrid computeDomainDecomposition failed");
       }
-      std::cerr << "done "<< processDomainDecomposition[0] << " " << processDomainDecomposition[1] << " " << processDomainDecomposition[2] << " / " <<
-      systemDim[0]/processDomainDecomposition[0] << " " << systemDim[1]/processDomainDecomposition[1] << " " << systemDim[2]/processDomainDecomposition[2] <<
-      " \n\n\n\n";
+      if(myRank==0 && verbose){
+         std::cerr << "done "<< processDomainDecomposition[0] << " " << processDomainDecomposition[1] << " " << processDomainDecomposition[2] << " / " <<
+         systemDim[0]/processDomainDecomposition[0] << " " << systemDim[1]/processDomainDecomposition[1] << " " << systemDim[2]/processDomainDecomposition[2] <<
+         " \n\n\n\n";
+      }
    }
       
 
@@ -240,14 +253,14 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
       typedef int64_t GlobalID;
 
    // Legacy constructor from coupling reference
-   FsGrid(std::array<uint64_t,3> globalSize, MPI_Comm parent_comm, std::array<bool,3> isPeriodic, FsGridCouplingInformation& coupling, const std::array<int, 3>& decomposition = {0,0,0}) : FsGrid(globalSize, parent_comm, isPeriodic, &coupling, decomposition) {}
+   FsGrid(std::array<uint64_t,3> globalSize, MPI_Comm parent_comm, std::array<bool,3> isPeriodic, FsGridCouplingInformation& coupling, const std::array<int, 3>& decomposition = {0,0,0}, bool verbose = false) : FsGrid(globalSize, parent_comm, isPeriodic, &coupling, decomposition, verbose) {}
 
       /*! Constructor for this grid.
        * \param globalSize Cell size of the global simulation domain.
        * \param MPI_Comm The MPI communicator this grid should use.
        * \param isPeriodic An array specifying, for each dimension, whether it is to be treated as periodic.
        */
-   FsGrid(std::array<uint64_t,3> globalSize, MPI_Comm parent_comm, std::array<bool,3> isPeriodic, FsGridCouplingInformation* coupling, const std::array<int, 3>& decomposition = {0,0,0})
+   FsGrid(std::array<uint64_t,3> globalSize, MPI_Comm parent_comm, std::array<bool,3> isPeriodic, FsGridCouplingInformation* coupling, const std::array<int, 3>& decomposition = {0,0,0}, bool verbose = false)
             : globalSize(globalSize), coupling(coupling) {
          int status;
          int size;
@@ -256,10 +269,11 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
          std::array<int,3> emptyarr = {0,0,0};
          if (decomposition == emptyarr){
             // If decomposition isn't pre-defined, heuristically choose a good domain decomposition for our field size
-            computeDomainDecomposition(globalSize, size, ntasks, stencil);
+            computeDomainDecomposition(globalSize, size, ntasks, stencil, verbose);
          }else{
+            ntasks = decomposition;
             if (ntasks[0]*ntasks[1]*ntasks[2] != size){
-               std::cerr << "Given decomposition does not distribute to the number of tasks given" << std::endl;
+               std::cerr << "Given decomposition ("<<ntasks[0] << " " << ntasks[1] << " " << ntasks[2] << ") does not distribute to the number of tasks given" << std::endl;
                throw std::runtime_error("Given decomposition does not distribute to the number of tasks given");
             }
             ntasks[0] = decomposition[0];
