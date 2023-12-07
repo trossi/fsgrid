@@ -129,21 +129,27 @@ struct FsGridTools{
    }
       
    //! Helper function to optimize decomposition of this grid over the given number of tasks
-   static void computeDomainDecomposition(const std::array<uint64_t, 3>& GlobalSize, uint64_t nProcs, std::array<int,3>& processDomainDecomposition, int stencilSize=1, bool verbose = false) {
+   static void computeDomainDecomposition(const std::array<uint64_t, 3>& GlobalSize, uint64_t nProcs, std::array<int,3>& processDomainDecomposition, int stencilSize=1, int verbose = 0) {
       // if(legacy)
       // {
       //    computeLegacyDomainDecomposition(GlobalSize, nProcs, processDomainDecomposition, stencilSize);
       //    return;
       // }
-      int myRank;
-      MPI_Comm_rank(MPI_COMM_WORLD, &myRank); // TODO allow for separate communicator
+      int myRank, MPI_flag;
+      MPI_Initialized(&MPI_flag);
+      if(MPI_flag){
+         MPI_Comm_rank(MPI_COMM_WORLD, &myRank); // TODO allow for separate communicator
+      }
+      else{
+         myRank = 0;
+      }
 
       std::array<uint64_t, 3> systemDim;
       std::array<uint64_t, 3> processBox;
       std::array<uint64_t, 3> minDomainSize;
-      uint64_t optimValue = std::numeric_limits<uint64_t>::max();
-      std::vector<std::pair<int,std::array<uint64_t,3>>> scored_decompositions;
-      scored_decompositions.push_back(std::pair<uint64_t,std::array<uint64_t,3>>(optimValue,{0,0,0}));
+      int64_t optimValue = std::numeric_limits<int64_t>::max();
+      std::vector<std::pair<int64_t,std::array<uint64_t,3>>> scored_decompositions;
+      scored_decompositions.push_back(std::pair<int64_t,std::array<uint64_t,3>>(optimValue,{0,0,0}));
       for(int i = 0; i < 3; i++) {
          systemDim[i] = GlobalSize[i];
          if(GlobalSize[i] == 1) {
@@ -161,30 +167,29 @@ struct FsGridTools{
             if( i * j  > nProcs ){
                break;
             }
-            for (uint64_t k = 1; k <= std::min(nProcs, GlobalSize[2]/minDomainSize[2]); k++) {
-               if( i * j * k != nProcs ) // No need to optimize an incompatible DD
-                  continue;
-               if( i * j * k > nProcs )
-                  break;
-               processBox[0] = systemDim[0]/i;
-               processBox[1] = systemDim[1]/j;
-               processBox[2] = systemDim[2]/k;
+            uint64_t k = nProcs/(i*j);
+            // No need to optimize an incompatible DD, also checks for missing remainders
+            if( i * j * k != nProcs ) 
+               continue;
 
-               int nonsingletondims = ((bool)(i-1)+(bool)(j-1)+(bool)(k-1));
+            processBox[0] = systemDim[0]/i;
+            processBox[1] = systemDim[1]/j;
+            processBox[2] = systemDim[2]/k;
 
-               uint64_t value = 
-                  (i > 1 ? processBox[1] * processBox[2]: 0) +
-                  (j > 1 ? processBox[0] * processBox[2]: 0) +
-                  (k > 1 ? processBox[0] * processBox[1]: 0) +
-                  nonsingletondims;
+            int nonsingletondims = ((bool)(i-1)+(bool)(j-1)+(bool)(k-1));
 
-               if(value <= optimValue ){
-                  optimValue = value;
-                  if(value < scored_decompositions.back().first){
-                     scored_decompositions.clear();
-                  }
-                  scored_decompositions.push_back(std::pair<uint64_t, std::array<uint64_t,3>>(value, {i,j,k}));
+            int64_t value = 
+               (i > 1 ? processBox[1] * processBox[2]: 0) +
+               (j > 1 ? processBox[0] * processBox[2]: 0) +
+               (k > 1 ? processBox[0] * processBox[1]: 0) +
+               nonsingletondims;
+
+            if(value <= optimValue ){
+               optimValue = value;
+               if(value < scored_decompositions.back().first){
+                  scored_decompositions.clear();
                }
+               scored_decompositions.push_back(std::pair<int64_t, std::array<uint64_t,3>>(value, {i,j,k}));
             }
          }
       }
@@ -207,7 +212,7 @@ struct FsGridTools{
 
 
       if(optimValue == std::numeric_limits<int64_t>::max() ||
-            processDomainDecomposition[0] * processDomainDecomposition[1] * processDomainDecomposition[2] != nProcs) {
+            (uint64_t)(processDomainDecomposition[0] * processDomainDecomposition[1] * processDomainDecomposition[2]) != nProcs) {
          if(myRank==0){
             std::cerr << "FSGrid domain decomposition failed, are you running on a prime number of tasks?" << std::endl;
          }
