@@ -149,12 +149,12 @@ struct FsGridTools{
       }
 
       if(myRank==0 && verbose){
-         std::cerr << "Number of equal minimal-surface decompositions found: " << scored_decompositions.size() << "\n";
+         std::cout << "(FSGRID) Number of equal minimal-surface decompositions found: " << scored_decompositions.size() << "\n";
       }
       if(myRank==0 && verbose){
          for (auto kv : scored_decompositions){
             
-            std::cerr << "Decomposition " << kv.second[0] <<","<<kv.second[1]<<","<<kv.second[2]<<  " "<< " for processBox size " <<
+            std::cout << "(FSGRID) Decomposition " << kv.second[0] <<","<<kv.second[1]<<","<<kv.second[2]<<  " "<< " for processBox size " <<
             systemDim[0]/kv.second[0] << " " << systemDim[1]/kv.second[1] << " " << systemDim[2]/kv.second[2] <<"\n";
          }
       }
@@ -168,14 +168,14 @@ struct FsGridTools{
       if(optimValue == std::numeric_limits<int64_t>::max() ||
             (uint64_t)(processDomainDecomposition[0] * processDomainDecomposition[1] * processDomainDecomposition[2]) != nProcs) {
          if(myRank==0){
-            std::cerr << "FSGrid domain decomposition failed, are you running on a prime number of tasks?" << std::endl;
+            std::cerr << "(FSGRID) Domain decomposition failed, are you running on a prime number of tasks?" << std::endl;
          }
          throw std::runtime_error("FSGrid computeDomainDecomposition failed");
       }
       if(myRank==0 && verbose){
-         std::cerr << "done "<< processDomainDecomposition[0] << " " << processDomainDecomposition[1] << " " << processDomainDecomposition[2] << " / " <<
+         std::cout << "(FSGRID) decomposition chosen as "<< processDomainDecomposition[0] << " " << processDomainDecomposition[1] << " " << processDomainDecomposition[2] << ", for processBox sizes " <<
          systemDim[0]/processDomainDecomposition[0] << " " << systemDim[1]/processDomainDecomposition[1] << " " << systemDim[2]/processDomainDecomposition[2] <<
-         " \n\n\n\n";
+         " \n";
       }
    }
       
