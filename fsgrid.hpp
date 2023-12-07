@@ -64,70 +64,6 @@ struct FsGridTools{
       }
    }
 
-   //! Helper function to optimize decomposition of this grid over the given number of tasks, for backward compatibility.
-   static void computeLegacyDomainDecomposition(const std::array<uint64_t, 3>& GlobalSize, int nProcs, std::array<int,3>& processDomainDecomposition, int stencilSize=1) {
-      std::array<double, 3> systemDim;
-      std::array<double, 3> processBox;
-      std::array<int, 3> minDomainSize;
-      double optimValue = std::numeric_limits<double>::max();
-      for(int i = 0; i < 3; i++) {
-         systemDim[i] = (double)GlobalSize[i];
-         if(GlobalSize[i] == 1) {
-            // In 2D simulation domains, the "thin" dimension can be a single cell thick.
-            minDomainSize[i] = 1;
-         } else {
-            // Otherwise, it needs to be at least as large as our ghost
-            // stencil, so that ghost communication remains consistent.
-            minDomainSize[i] = stencilSize;
-         }
-      }
-      processDomainDecomposition = {1, 1, 1};
-      for (int64_t i = 1; i <= std::min(nProcs, (int)GlobalSize[0]); i++) {
-
-         for (int64_t j = 1; j <= std::min(nProcs, (int)GlobalSize[1]) ; j++) {
-            if( i * j  > nProcs )
-               break;
-
-            for (int64_t k = 1; k <= std::min(nProcs, (int)GlobalSize[2]); k++) {
-               if( i * j * k > nProcs )
-                  break;
-               if( i * j * k != nProcs )
-                  continue;
-               processBox[0] = std::max(systemDim[0]/i, (double)minDomainSize[0]);
-               processBox[1] = std::max(systemDim[1]/j, (double)minDomainSize[1]);
-               processBox[2] = std::max(systemDim[2]/k, (double)minDomainSize[2]); 
-               double value = 
-                  10ll * processBox[0] * processBox[1] * processBox[2] + 
-                  (i > 1ll ? processBox[1] * processBox[2]: 0ll) +
-                  (j > 1ll ? processBox[0] * processBox[2]: 0ll) +
-                  (k > 1ll ? processBox[0] * processBox[1]: 0ll);
-
-               if(value < optimValue ){
-                  optimValue = value;
-                  processDomainDecomposition[0] = i;
-                  processDomainDecomposition[1] = j;
-                  processDomainDecomposition[2] = k;
-               }
-                        //       std::cerr << std::setw(4) << "i,j,k = " << std::setw(4)<< i << ",\t" 
-                        // << std::setw(4)<< j << ",\t" << std::setw(4)<< k <<":\t, pb = " 
-                        // << std::setw(4)<< processBox[0] << ",\t"<< std::setw(4) 
-                        // << processBox[1] << ",\t"<< std::setw(4) << processBox[2] 
-                        // <<"\t value = " << value << ", optimValue = " << optimValue 
-                        // << ". Is " << 10 * processBox[0] * processBox[1] * processBox[2] <<" a const?\n";
-
-
-            }
-         }
-      }
-
-      if(optimValue == std::numeric_limits<double>::max() ||
-            processDomainDecomposition[0] * processDomainDecomposition[1] * processDomainDecomposition[2] != nProcs) {
-         std::cerr << "FSGrid domain decomposition failed, are you running on a prime number of tasks?" << std::endl;
-         throw std::runtime_error("FSGrid computeDomainDecomposition failed");
-      }
-      std::cerr << "Legacy done "<< processDomainDecomposition[0] << " " << processDomainDecomposition[1] << " " << processDomainDecomposition[2] << " \n\n\n\n";
-   }
-      
    //! Helper function to optimize decomposition of this grid over the given number of tasks
    static void computeDomainDecomposition(const std::array<uint64_t, 3>& GlobalSize, uint64_t nProcs, std::array<int,3>& processDomainDecomposition, int stencilSize=1, int verbose = 0) {
       // if(legacy)
@@ -176,13 +112,31 @@ struct FsGridTools{
             processBox[1] = systemDim[1]/j;
             processBox[2] = systemDim[2]/k;
 
-            int nonsingletondims = ((bool)(i-1)+(bool)(j-1)+(bool)(k-1));
+            // Swap the above with this pending a grace period
+            // processBox[0] = calcLocalSize(systemDim[0],i,0);
+            // processBox[1] = calcLocalSize(systemDim[1],j,0);
+            // processBox[2] = calcLocalSize(systemDim[2],k,0);
 
             int64_t value = 
                (i > 1 ? processBox[1] * processBox[2]: 0) +
                (j > 1 ? processBox[0] * processBox[2]: 0) +
-               (k > 1 ? processBox[0] * processBox[1]: 0) +
-               nonsingletondims;
+               (k > 1 ? processBox[0] * processBox[1]: 0);
+              
+            // Enable the below pending a grace period
+            // account for singular domains             
+            // if (i!=1 && j!= 1 && k!=1) {
+            //    value *= 13; // 26 neighbours to communicate to
+            // }
+            // if (i==1 && j!= 1 && k!=1) {
+            //    value *= 4; // 8 neighbours to communicate to
+            // }
+            // if (i!=1 && j== 1 && k!=1) {
+            //    value *= 4; // 8 neighbours to communicate to
+            // }
+            // if (i!=1 && j!= 1 && k==1) {
+            //    value *= 4; // 8 neighbours to communicate to
+            // }
+            // else: 2 neighbours to communicate to
 
             if(value <= optimValue ){
                optimValue = value;
