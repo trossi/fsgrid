@@ -647,8 +647,8 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
        * \param y The cell's global y coordinate
        * \param z The cell's global z coordinate
        */
-      std::array<int, 3> globalToLocal(int x, int y, int z) {
-         std::array<int, 3> retval;
+      std::array<int64_t, 3> globalToLocal(int64_t x, int64_t y, int64_t z) {
+         std::array<int64_t, 3> retval;
          retval[0] = x - localStart[0];
          retval[1] = y - localStart[1];
          retval[2] = z - localStart[2];
@@ -940,8 +940,8 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
        *
        * \return Global cell coordinates
        */
-      std::array<int32_t, 3> getGlobalIndices(int x, int y, int z) {
-         std::array<int32_t, 3> retval;
+      std::array<uint64_t, 3> getGlobalIndices(int64_t x, int64_t y, int64_t z) {
+         std::array<uint64_t, 3> retval;
          retval[0] = localStart[0] + x;
          retval[1] = localStart[1] + y;
          retval[2] = localStart[2] + z;
