@@ -34,12 +34,19 @@
 
 struct FsGridTools{
 
+   typedef uint32_t FsSize_t; // Size type for global array indices
+   typedef int32_t FsIndices_t; // Size type for global array indices, incl. possible negative values
+
+   typedef int64_t LocalID;
+   typedef int64_t GlobalID;
+   typedef uint32_t Task_t; 
+
    //! Helper function: calculate position of the local coordinate space for the given dimension
    // \param globalCells Number of cells in the global Simulation, in this dimension
    // \param ntasks Total number of tasks in this dimension
    // \param my_n This task's position in this dimension
    // \return Cell number at which this task's domains cells start (actual cells, not counting ghost cells)
-   static int32_t calcLocalStart(int32_t globalCells, uint64_t ntasks, int my_n) {
+   static FsIndices_t calcLocalStart(FsSize_t globalCells, Task_t ntasks, int my_n) {
       int n_per_task = globalCells / ntasks;
       int remainder = globalCells % ntasks;
 
@@ -54,7 +61,7 @@ struct FsGridTools{
    // \param ntasks Total number of tasks in this dimension
    // \param my_n This task's position in this dimension
    // \return Number of cells for this task's local domain (actual cells, not counting ghost cells)
-   static int32_t calcLocalSize(int32_t globalCells, uint64_t ntasks, int my_n) {
+   static int32_t calcLocalSize(FsSize_t globalCells, Task_t ntasks, int my_n) {
       int n_per_task = globalCells/ntasks;
       int remainder = globalCells%ntasks;
       if(my_n < remainder) {
@@ -65,7 +72,7 @@ struct FsGridTools{
    }
 
    //! Helper function to calculate decomposition of files without stored decompositions
-   static void computeLegacyDomainDecomposition(const std::array<uint64_t, 3>& GlobalSize, uint64_t nProcs, std::array<uint64_t,3>& processDomainDecomposition, int stencilSize=1, int verbose = 0) {
+   static void computeLegacyDomainDecomposition(const std::array<FsSize_t, 3>& GlobalSize, uint64_t nProcs, std::array<uint64_t,3>& processDomainDecomposition, int stencilSize=1, int verbose = 0) {
       int myRank, MPI_flag;
       MPI_Initialized(&MPI_flag);
       if(MPI_flag){
@@ -75,12 +82,12 @@ struct FsGridTools{
          myRank = 0;
       }
 
-      std::array<uint64_t, 3> systemDim;
-      std::array<uint64_t, 3> processBox;
-      std::array<uint64_t, 3> minDomainSize;
+      std::array<FsSize_t, 3> systemDim;
+      std::array<FsSize_t, 3> processBox;
+      std::array<FsSize_t, 3> minDomainSize;
       int64_t optimValue = std::numeric_limits<int64_t>::max();
       std::vector<std::pair<int64_t,std::array<uint64_t,3>>> scored_decompositions;
-      scored_decompositions.push_back(std::pair<int64_t,std::array<uint64_t,3>>(optimValue,{0,0,0}));
+      scored_decompositions.push_back(std::pair<int64_t,std::array<FsSize_t,3>>(optimValue,{0,0,0}));
       for(int i = 0; i < 3; i++) {
          systemDim[i] = GlobalSize[i];
          if(GlobalSize[i] == 1) {
@@ -93,12 +100,12 @@ struct FsGridTools{
          }
       }
       processDomainDecomposition = {1, 1, 1};
-      for (uint64_t i = 1; i <= std::min(nProcs, GlobalSize[0]/minDomainSize[0]); i++) {
-         for (uint64_t j = 1; j <= std::min(nProcs, GlobalSize[1]/minDomainSize[1]) ; j++) {
+      for (FsSize_t i = 1; i <= std::min(nProcs, GlobalSize[0]/minDomainSize[0]); i++) {
+         for (FsSize_t j = 1; j <= std::min(nProcs, GlobalSize[1]/minDomainSize[1]) ; j++) {
             if( i * j  > nProcs ){
                break;
             }
-            uint64_t k = nProcs/(i*j);
+            FsSize_t k = nProcs/(i*j);
             // No need to optimize an incompatible DD, also checks for missing remainders
             if( i * j * k != nProcs ) 
                continue;
@@ -297,24 +304,21 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
 
    public:
 
-      typedef int64_t LocalID;
-      typedef int64_t GlobalID;
-
    // Legacy constructor from coupling reference
-   FsGrid(std::array<uint64_t,3> globalSize, MPI_Comm parent_comm, std::array<bool,3> isPeriodic, FsGridCouplingInformation& coupling, const std::array<uint64_t, 3>& decomposition = {0,0,0}, bool verbose = false) : FsGrid(globalSize, parent_comm, isPeriodic, &coupling, decomposition, verbose) {}
+   FsGrid(std::array<FsSize_t,3> globalSize, MPI_Comm parent_comm, std::array<bool,3> isPeriodic, FsGridCouplingInformation& coupling, const std::array<uint64_t, 3>& decomposition = {0,0,0}, bool verbose = false) : FsGrid(globalSize, parent_comm, isPeriodic, &coupling, decomposition, verbose) {}
 
       /*! Constructor for this grid.
        * \param globalSize Cell size of the global simulation domain.
        * \param MPI_Comm The MPI communicator this grid should use.
        * \param isPeriodic An array specifying, for each dimension, whether it is to be treated as periodic.
        */
-   FsGrid(std::array<uint64_t,3> globalSize, MPI_Comm parent_comm, std::array<bool,3> isPeriodic, FsGridCouplingInformation* coupling, const std::array<uint64_t, 3>& decomposition = {0,0,0}, bool verbose = false)
+   FsGrid(std::array<FsSize_t,3> globalSize, MPI_Comm parent_comm, std::array<bool,3> isPeriodic, FsGridCouplingInformation* coupling, const std::array<uint64_t, 3>& decomposition = {0,0,0}, bool verbose = false)
             : globalSize(globalSize), coupling(coupling) {
          int status;
          int size;
 
          status = MPI_Comm_size(parent_comm, &size);
-         std::array<uint64_t,3> emptyarr = {0,0,0};
+         std::array<FsSize_t,3> emptyarr = {0,0,0};
          if (decomposition == emptyarr){
             // If decomposition isn't pre-defined, heuristically choose a good domain decomposition for our field size
             computeDomainDecomposition(globalSize, size, ntasks, stencil, verbose);
