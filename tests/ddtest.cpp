@@ -29,8 +29,8 @@
 
 int main(int argc, char **argv){
   
-   std::array<uint64_t,3> sys;
-   std::array<uint64_t,3> processDomainDecomposition;
+   std::array<FsGridTools::FsSize_t,3> sys;
+   std::array<FsGridTools::Task_t,3> processDomainDecomposition;
 
    if(argc != 5) {
       printf("Usage %s size_x size_y size_z nProcesses\n", argv[0]);
