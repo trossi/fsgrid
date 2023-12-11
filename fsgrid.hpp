@@ -77,8 +77,7 @@ struct FsGridTools{
       MPI_Initialized(&MPI_flag);
       if(MPI_flag){
          MPI_Comm_rank(MPI_COMM_WORLD, &myRank); // TODO allow for separate communicator
-      }
-      else{
+      } else {
          myRank = 0;
       }
 
@@ -171,8 +170,7 @@ struct FsGridTools{
       MPI_Initialized(&MPI_flag);
       if(MPI_flag){
          MPI_Comm_rank(MPI_COMM_WORLD, &myRank); // TODO allow for separate communicator
-      }
-      else{
+      } else {
          myRank = 0;
       }
 
@@ -328,7 +326,7 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
          if (decomposition == emptyarr){
             // If decomposition isn't pre-defined, heuristically choose a good domain decomposition for our field size
             computeDomainDecomposition(globalSize, size, ntasks, stencil, verbose);
-         }else{
+         } else {
             ntasks = decomposition;
             if (ntasks[0]*ntasks[1]*ntasks[2] != size){
                std::cerr << "Given decomposition ("<<ntasks[0] << " " << ntasks[1] << " " << ntasks[2] << ") does not distribute to the number of tasks given" << std::endl;
