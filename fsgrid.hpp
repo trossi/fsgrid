@@ -655,11 +655,11 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
        * \param y The cell's global y coordinate
        * \param z The cell's global z coordinate
        */
-      std::array<int64_t, 3> globalToLocal(int64_t x, int64_t y, int64_t z) {
-         std::array<int64_t, 3> retval;
-         retval[0] = x - localStart[0];
-         retval[1] = y - localStart[1];
-         retval[2] = z - localStart[2];
+      std::array<FsIndex_t, 3> globalToLocal(FsSize_t x, FsSize_t y, FsSize_t z) {
+         std::array<FsIndex_t, 3> retval;
+         retval[0] = (FsIndex_t)x - localStart[0];
+         retval[1] = (FsIndex_t)y - localStart[1];
+         retval[2] = (FsIndex_t)z - localStart[2];
 
          if(retval[0] >= localSize[0] || retval[1] >= localSize[1] || retval[2] >= localSize[2]
                || retval[0] < 0 || retval[1] < 0 || retval[2] < 0) {
