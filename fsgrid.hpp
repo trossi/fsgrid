@@ -106,8 +106,9 @@ struct FsGridTools{
             }
             Task_t k = nProcs/(i*j);
             // No need to optimize an incompatible DD, also checks for missing remainders
-            if( i * j * k != nProcs ) 
+            if( i * j * k != nProcs ) {
                continue;
+            }
 
             processBox[0] = systemDim[0]/i;
             processBox[1] = systemDim[1]/j;
@@ -199,8 +200,9 @@ struct FsGridTools{
             }
             Task_t k = nProcs/(i*j);
             // No need to optimize an incompatible DD, also checks for missing remainders
-            if( i * j * k != nProcs ) 
+            if( i * j * k != nProcs ) {
                continue;
+            }
 
             processBox[0] = systemDim[0]/i;
             processBox[1] = systemDim[1]/j;
@@ -1206,17 +1208,4 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
 
          return cell;
       }
-
-
-      // void swapArray(std::array<int, 3>& array) {
-      //    int a = array[0];
-      //    array[0] = array[2];
-      //    array[2] = a;
-      // }
-
-      // void swapArray(std::array<uint64_t, 3>& array) {
-      //    u_int64_t a = array[0];
-      //    array[0] = array[2];
-      //    array[2] = a;
-      // }
 };
