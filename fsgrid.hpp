@@ -56,6 +56,27 @@ struct FsGridTools{
          return my_n * n_per_task + remainder;
       }
    }
+
+   //! Helper function: given a global cellID, calculate the global cell coordinate from it.
+   // This is then used do determine the task responsible for this cell, and the
+   // local cell index in it.
+   static std::array<FsIndex_t, 3> globalIDtoCellCoord(GlobalID id, std::array<FsSize_t, 3> &globalSize) {
+
+      // Transform globalID to global cell coordinate
+      std::array<FsIndex_t, 3> cell;
+
+      assert(id >= 0);
+      assert(id < globalSize[0] * globalSize[1] * globalSize[2]);
+
+      int stride=1;
+      for(int i=0; i<3; i++) {
+         cell[i] = (id / stride) % globalSize[i];
+         stride *= globalSize[i];
+      }
+
+      return cell;
+   }
+
    //! Helper function: calculate size of the local coordinate space for the given dimension
    // \param globalCells Number of cells in the global Simulation, in this dimension
    // \param ntasks Total number of tasks in this dimension
@@ -1193,19 +1214,19 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
       // This is then used do determine the task responsible for this cell, and the
       // local cell index in it.
       std::array<FsIndex_t, 3> globalIDtoCellCoord(GlobalID id) {
+         return FsGridTools::globalIDtoCellCoord(id, globalSize);
+         // // Transform globalID to global cell coordinate
+         // std::array<FsIndex_t, 3> cell;
 
-         // Transform globalID to global cell coordinate
-         std::array<FsIndex_t, 3> cell;
+         // assert(id >= 0);
+         // assert(id < globalSize[0] * globalSize[1] * globalSize[2]);
 
-         assert(id >= 0);
-         assert(id < globalSize[0] * globalSize[1] * globalSize[2]);
+         // int stride=1;
+         // for(int i=0; i<3; i++) {
+         //    cell[i] = (id / stride) % globalSize[i];
+         //    stride *= globalSize[i];
+         // }
 
-         int stride=1;
-         for(int i=0; i<3; i++) {
-            cell[i] = (id / stride) % globalSize[i];
-            stride *= globalSize[i];
-         }
-
-         return cell;
+         // return cell;
       }
 };
