@@ -92,95 +92,6 @@ struct FsGridTools{
       }
    }
 
-   //! Helper function to calculate decomposition of files without stored decompositions
-   static void computeLegacyDomainDecomposition(const std::array<FsSize_t, 3>& GlobalSize, Task_t nProcs, std::array<Task_t,3>& processDomainDecomposition, int stencilSize=1, int verbose = 0) {
-      int myRank, MPI_flag;
-      MPI_Initialized(&MPI_flag);
-      if(MPI_flag){
-         MPI_Comm_rank(MPI_COMM_WORLD, &myRank); // TODO allow for separate communicator
-      } else {
-         myRank = 0;
-      }
-
-      std::array<FsSize_t, 3> systemDim;
-      std::array<FsSize_t, 3> processBox;
-      std::array<FsSize_t, 3> minDomainSize;
-      int64_t optimValue = std::numeric_limits<int64_t>::max();
-      std::vector<std::pair<int64_t,std::array<Task_t,3>>> scored_decompositions;
-      scored_decompositions.push_back(std::pair<int64_t,std::array<Task_t,3>>(optimValue,{0,0,0}));
-      for(int i = 0; i < 3; i++) {
-         systemDim[i] = GlobalSize[i];
-         if(GlobalSize[i] == 1) {
-            // In 2D simulation domains, the "thin" dimension can be a single cell thick.
-            minDomainSize[i] = 1;
-         } else {
-            // Otherwise, it needs to be at least as large as our ghost
-            // stencil, so that ghost communication remains consistent.
-            minDomainSize[i] = stencilSize;
-         }
-      }
-      processDomainDecomposition = {1, 1, 1};
-      for (Task_t i = 1; i <= std::min(nProcs, (Task_t)(GlobalSize[0]/minDomainSize[0])); i++) {
-         for (Task_t j = 1; j <= std::min(nProcs, (Task_t)(GlobalSize[1]/minDomainSize[1])) ; j++) {
-            if( i * j  > nProcs ){
-               break;
-            }
-            Task_t k = nProcs/(i*j);
-            // No need to optimize an incompatible DD, also checks for missing remainders
-            if( i * j * k != nProcs ) {
-               continue;
-            }
-
-            processBox[0] = systemDim[0]/i;
-            processBox[1] = systemDim[1]/j;
-            processBox[2] = systemDim[2]/k;
-
-            int64_t value = 
-               (i > 1 ? processBox[1] * processBox[2]: 0) +
-               (j > 1 ? processBox[0] * processBox[2]: 0) +
-               (k > 1 ? processBox[0] * processBox[1]: 0);
-              
-            if(value <= optimValue ){
-               optimValue = value;
-               if(value < scored_decompositions.back().first){
-                  scored_decompositions.clear();
-               }
-               scored_decompositions.push_back(std::pair<int64_t, std::array<Task_t,3>>(value, {i,j,k}));
-            }
-         }
-      }
-
-      if(myRank==0 && verbose){
-         std::cout << "(FSGRID legacy) Number of equal minimal-surface decompositions found: " << scored_decompositions.size() << "\n";
-      }
-      if(myRank==0 && verbose){
-         for (auto kv : scored_decompositions){
-            
-            std::cout << "(FSGRID legacy) Decomposition " << kv.second[0] <<","<<kv.second[1]<<","<<kv.second[2]<<  " "<< " for processBox size " <<
-            systemDim[0]/kv.second[0] << " " << systemDim[1]/kv.second[1] << " " << systemDim[2]/kv.second[2] <<"\n";
-         }
-      }
-
-      // Taking the first scored_decomposition (smallest X decomposition)
-      processDomainDecomposition[0] = scored_decompositions[0].second[0];
-      processDomainDecomposition[1] = scored_decompositions[0].second[1];
-      processDomainDecomposition[2] = scored_decompositions[0].second[2];
-
-
-      if(optimValue == std::numeric_limits<int64_t>::max() ||
-            (Task_t)(processDomainDecomposition[0] * processDomainDecomposition[1] * processDomainDecomposition[2]) != nProcs) {
-         if(myRank == 0){
-            std::cerr << "(FSGRID legacy) Domain decomposition failed, are you running on a prime number of tasks?" << std::endl;
-         }
-         throw std::runtime_error("FSGrid computeLegacyDomainDecomposition failed");
-      }
-      if(myRank == 0 && verbose){
-         std::cout << "(FSGRID legacy) decomposition chosen as "<< processDomainDecomposition[0] << " " << processDomainDecomposition[1] << " " << processDomainDecomposition[2] << ", for processBox sizes " <<
-         systemDim[0]/processDomainDecomposition[0] << " " << systemDim[1]/processDomainDecomposition[1] << " " << systemDim[2]/processDomainDecomposition[2] <<
-         " \n";
-      }
-   }
-
    //! Helper function to optimize decomposition of this grid over the given number of tasks
    static void computeDomainDecomposition(const std::array<FsSize_t, 3>& GlobalSize, Task_t nProcs, std::array<Task_t,3>& processDomainDecomposition, int stencilSize=1, int verbose = 0) {
       // if(legacy)
@@ -622,7 +533,7 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
        */
       std::pair<int,LocalID> getTaskForGlobalID(GlobalID id) {
          // Transform globalID to global cell coordinate
-         std::array<FsIndex_t, 3> cell = globalIDtoCellCoord(id);
+         std::array<FsIndex_t, 3> cell = FsGridTools::globalIDtoCellCoord(id, globalSize);
 
          // Find the index in the task grid this Cell belongs to
          std::array<int, 3> taskIndex;
@@ -1209,24 +1120,4 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
 
       //! Actual storage of field data
       std::vector<T> data;
-
-      //! Helper function: given a global cellID, calculate the global cell coordinate from it.
-      // This is then used do determine the task responsible for this cell, and the
-      // local cell index in it.
-      std::array<FsIndex_t, 3> globalIDtoCellCoord(GlobalID id) {
-         return FsGridTools::globalIDtoCellCoord(id, globalSize);
-         // // Transform globalID to global cell coordinate
-         // std::array<FsIndex_t, 3> cell;
-
-         // assert(id >= 0);
-         // assert(id < globalSize[0] * globalSize[1] * globalSize[2]);
-
-         // int stride=1;
-         // for(int i=0; i<3; i++) {
-         //    cell[i] = (id / stride) % globalSize[i];
-         //    stride *= globalSize[i];
-         // }
-
-         // return cell;
-      }
 };
