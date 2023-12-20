@@ -143,18 +143,18 @@ struct FsGridTools{
                (k > 1 ? processBox[0] * processBox[1]: 0);
               
              // account for singular domains
-            if (i!=1 && j!= 1 && k!=1) {
-               value *= 13; // 26 neighbours to communicate to
-            }
-            if (i==1 && j!= 1 && k!=1) {
-               value *= 4; // 8 neighbours to communicate to
-            }
-            if (i!=1 && j== 1 && k!=1) {
-               value *= 4; // 8 neighbours to communicate to
-            }
-            if (i!=1 && j!= 1 && k==1) {
-               value *= 4; // 8 neighbours to communicate to
-            }
+            // if (i!=1 && j!= 1 && k!=1) {
+            //    value *= 13; // 26 neighbours to communicate to
+            // }
+            // if (i==1 && j!= 1 && k!=1) {
+            //    value *= 4; // 8 neighbours to communicate to
+            // }
+            // if (i!=1 && j== 1 && k!=1) {
+            //    value *= 4; // 8 neighbours to communicate to
+            // }
+            // if (i!=1 && j!= 1 && k==1) {
+            //    value *= 4; // 8 neighbours to communicate to
+            // }
             // else: 2 neighbours to communicate to, no need to adjust
 
             if(value <= optimValue ){
@@ -372,7 +372,7 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
          if(  localSize[0] == 0 || (globalSize[0] > stencil && localSize[0] < stencil)
            || localSize[1] == 0 || (globalSize[1] > stencil && localSize[1] < stencil)
            || localSize[2] == 0 || (globalSize[2] > stencil && localSize[2] < stencil)) {
-            std::cerr << "FSGrid space partitioning leads to a space that is too small on Rank " << rank << "." <<std::endl;
+            std::cerr << "FSGrid space partitioning leads to a space that is too small on Rank " << rank << ". ProcessBox was [" << localSize[0] << ", " localSize[1] << ", " << localSize[2] <<"]" <<std::endl;
             std::cerr << "Please run with a different number of Tasks, so that space is better divisible." <<std::endl;
             throw std::runtime_error("FSGrid too small domains");
          }
