@@ -30,7 +30,9 @@
 #include <iomanip>
 #include <algorithm>
 
-
+#ifndef FS_MASTER_RANK
+#define FS_MASTER_RANK 0
+#endif
 
 struct FsGridTools{
 
@@ -99,7 +101,7 @@ struct FsGridTools{
       if(MPI_flag){
          MPI_Comm_rank(MPI_COMM_WORLD, &myRank); // TODO allow for separate communicator
       } else {
-         myRank = 0;
+         myRank = FS_MASTER_RANK;
       }
 
       std::array<FsSize_t, 3> systemDim;
@@ -131,35 +133,29 @@ struct FsGridTools{
                continue;
             }
 
-            processBox[0] = systemDim[0]/i;
-            processBox[1] = systemDim[1]/j;
-            processBox[2] = systemDim[2]/k;
-
-            // Swap the above with this pending a grace period
-            // processBox[0] = calcLocalSize(systemDim[0],i,0);
-            // processBox[1] = calcLocalSize(systemDim[1],j,0);
-            // processBox[2] = calcLocalSize(systemDim[2],k,0);
+            processBox[0] = calcLocalSize(systemDim[0],i,0);
+            processBox[1] = calcLocalSize(systemDim[1],j,0);
+            processBox[2] = calcLocalSize(systemDim[2],k,0);
 
             int64_t value = 
                (i > 1 ? processBox[1] * processBox[2]: 0) +
                (j > 1 ? processBox[0] * processBox[2]: 0) +
                (k > 1 ? processBox[0] * processBox[1]: 0);
               
-            // Enable the below pending a grace period
-            // account for singular domains             
-            // if (i!=1 && j!= 1 && k!=1) {
-            //    value *= 13; // 26 neighbours to communicate to
-            // }
-            // if (i==1 && j!= 1 && k!=1) {
-            //    value *= 4; // 8 neighbours to communicate to
-            // }
-            // if (i!=1 && j== 1 && k!=1) {
-            //    value *= 4; // 8 neighbours to communicate to
-            // }
-            // if (i!=1 && j!= 1 && k==1) {
-            //    value *= 4; // 8 neighbours to communicate to
-            // }
-            // else: 2 neighbours to communicate to
+             // account for singular domains
+            if (i!=1 && j!= 1 && k!=1) {
+               value *= 13; // 26 neighbours to communicate to
+            }
+            if (i==1 && j!= 1 && k!=1) {
+               value *= 4; // 8 neighbours to communicate to
+            }
+            if (i!=1 && j== 1 && k!=1) {
+               value *= 4; // 8 neighbours to communicate to
+            }
+            if (i!=1 && j!= 1 && k==1) {
+               value *= 4; // 8 neighbours to communicate to
+            }
+            // else: 2 neighbours to communicate to, no need to adjust
 
             if(value <= optimValue ){
                optimValue = value;
@@ -171,12 +167,9 @@ struct FsGridTools{
          }
       }
 
-      if(myRank == 0 && verbose){
+      if(myRank == FS_MASTER_RANK && verbose){
          std::cout << "(FSGRID) Number of equal minimal-surface decompositions found: " << scored_decompositions.size() << "\n";
-      }
-      if(myRank == 0 && verbose){
          for (auto kv : scored_decompositions){
-            
             std::cout << "(FSGRID) Decomposition " << kv.second[0] <<","<<kv.second[1]<<","<<kv.second[2]<<  " "<< " for processBox size " <<
             systemDim[0]/kv.second[0] << " " << systemDim[1]/kv.second[1] << " " << systemDim[2]/kv.second[2] <<"\n";
          }
