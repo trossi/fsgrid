@@ -644,9 +644,9 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
             coupling->externalRank[i] = MPI_PROC_NULL;
          }
 
-         for(int z=0; z<localSize[2]; z++) {
-            for(int y=0; y<localSize[1]; y++) {
-               for(int x=0; x<localSize[0]; x++) {
+         for(FsIndex_t z=0; z<localSize[2]; z++) {
+            for(FsIndex_t y=0; y<localSize[1]; y++) {
+               for(FsIndex_t x=0; x<localSize[0]; x++) {
                   // Calculate LocalID for this cell
                   LocalID thisCell = LocalIDForCoords(x,y,z);
                   assert(numRequests < requests.size());
@@ -703,9 +703,9 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
          requests.resize(localSize[0]*localSize[1]*localSize[2] + cellsToSend);
          numRequests=0;
 
-         for(int z=0; z<localSize[2]; z++) {
-            for(int y=0; y<localSize[1]; y++) {
-               for(int x=0; x<localSize[0]; x++) {
+         for(FsIndex_t z=0; z<localSize[2]; z++) {
+            for(FsIndex_t y=0; y<localSize[1]; y++) {
+               for(FsIndex_t x=0; x<localSize[0]; x++) {
                   // Calculate LocalID for this cell
                   LocalID thisCell = LocalIDForCoords(x,y,z);
                   assert(numRequests < requests.size());
@@ -787,9 +787,9 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
        */
       void finishTransfersOut() {
          int status;
-         for(int z=0; z<localSize[2]; z++) {
-            for(int y=0; y<localSize[1]; y++) {
-               for(int x=0; x<localSize[0]; x++) {
+         for(FsIndex_t z=0; z<localSize[2]; z++) {
+            for(FsIndex_t y=0; y<localSize[1]; y++) {
+               for(FsIndex_t x=0; x<localSize[0]; x++) {
                   // Calculate LocalID for this cell
                   LocalID thisCell = LocalIDForCoords(x,y,z);
                   assert(numRequests < requests.size());
