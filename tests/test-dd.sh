@@ -14,10 +14,5 @@ do
 #  mpirun -n 1 ./ddtest 128 256 256 $val
  done
 
-python3 analysator-test.py ${vals[@]} $val
-#  python3 analysator-test.py 256 256 256 $val
-#  python3 analysator-test.py 256 256 128 $val
-#  python3 analysator-test.py 256 128 256 $val
-#  python3 analysator-test.py 128 256 256 $val
 done
 

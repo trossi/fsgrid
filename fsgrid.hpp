@@ -94,11 +94,6 @@ struct FsGridTools{
 
    //! Helper function to optimize decomposition of this grid over the given number of tasks
    static void computeDomainDecomposition(const std::array<FsSize_t, 3>& GlobalSize, Task_t nProcs, std::array<Task_t,3>& processDomainDecomposition, int stencilSize=1, int verbose = 0) {
-      // if(legacy)
-      // {
-      //    computeLegacyDomainDecomposition(GlobalSize, nProcs, processDomainDecomposition, stencilSize);
-      //    return;
-      // }
       int myRank, MPI_flag;
       MPI_Initialized(&MPI_flag);
       if(MPI_flag){
