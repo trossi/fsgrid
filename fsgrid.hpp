@@ -132,6 +132,9 @@ struct FsGridTools{
             if( i * j * k != nProcs ) {
                continue;
             }
+            if (k > GlobalSize[2]/minDomainSize[2]) {
+               continue;
+            }
 
             processBox[0] = calcLocalSize(systemDim[0],i,0);
             processBox[1] = calcLocalSize(systemDim[1],j,0);
@@ -143,18 +146,18 @@ struct FsGridTools{
                (k > 1 ? processBox[0] * processBox[1]: 0);
               
              // account for singular domains
-            // if (i!=1 && j!= 1 && k!=1) {
-            //    value *= 13; // 26 neighbours to communicate to
-            // }
-            // if (i==1 && j!= 1 && k!=1) {
-            //    value *= 4; // 8 neighbours to communicate to
-            // }
-            // if (i!=1 && j== 1 && k!=1) {
-            //    value *= 4; // 8 neighbours to communicate to
-            // }
-            // if (i!=1 && j!= 1 && k==1) {
-            //    value *= 4; // 8 neighbours to communicate to
-            // }
+            if (i!=1 && j!= 1 && k!=1) {
+               value *= 13; // 26 neighbours to communicate to
+            }
+            if (i==1 && j!= 1 && k!=1) {
+               value *= 4; // 8 neighbours to communicate to
+            }
+            if (i!=1 && j== 1 && k!=1) {
+               value *= 4; // 8 neighbours to communicate to
+            }
+            if (i!=1 && j!= 1 && k==1) {
+               value *= 4; // 8 neighbours to communicate to
+            }
             // else: 2 neighbours to communicate to, no need to adjust
 
             if(value <= optimValue ){
