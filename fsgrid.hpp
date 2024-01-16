@@ -250,16 +250,16 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
          std::array<Task_t,3> emptyarr = {0,0,0};
          if (decomposition == emptyarr){
             // If decomposition isn't pre-defined, heuristically choose a good domain decomposition for our field size
-            computeDomainDecomposition(globalSize, size, ntasks, stencil, verbose);
+            computeDomainDecomposition(globalSize, size, ntasksPerDim, stencil, verbose);
          } else {
-            ntasks = decomposition;
-            if (ntasks[0]*ntasks[1]*ntasks[2] != size){
-               std::cerr << "Given decomposition ("<<ntasks[0] << " " << ntasks[1] << " " << ntasks[2] << ") does not distribute to the number of tasks given" << std::endl;
+            ntasksPerDim = decomposition;
+            if (ntasksPerDim[0]*ntasksPerDim[1]*ntasksPerDim[2] != size){
+               std::cerr << "Given decomposition ("<<ntasksPerDim[0] << " " << ntasksPerDim[1] << " " << ntasksPerDim[2] << ") does not distribute to the number of tasks given" << std::endl;
                throw std::runtime_error("Given decomposition does not distribute to the number of tasks given");
             }
-            ntasks[0] = decomposition[0];
-            ntasks[1] = decomposition[1];
-            ntasks[2] = decomposition[2];
+            ntasksPerDim[0] = decomposition[0];
+            ntasksPerDim[1] = decomposition[1];
+            ntasksPerDim[2] = decomposition[2];
          }
          
          //set private array
@@ -268,7 +268,7 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
          std::array<int, 3> isPeriodicInt, ntasksInt;
          for(unsigned int i=0; i < isPeriodic.size(); i++) {
             isPeriodicInt[i] = (int)isPeriodic[i];
-            ntasksInt[i] = (int)ntasks[i];
+            ntasksInt[i] = (int)ntasksPerDim[i];
          }  
          
          // Create cartesian communicator. Note, that reorder is false so
@@ -317,28 +317,28 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
                    */
                   neighPosition[0]=taskPosition[0]+x;
                   if(isPeriodic[0]) {
-                     neighPosition[0] += ntasks[0];
-                     neighPosition[0] %= ntasks[0];
+                     neighPosition[0] += ntasksPerDim[0];
+                     neighPosition[0] %= ntasksPerDim[0];
                   }
 
                   neighPosition[1]=taskPosition[1]+y;
                   if(isPeriodic[1]) {
-                     neighPosition[1] += ntasks[1];
-                     neighPosition[1] %= ntasks[1];
+                     neighPosition[1] += ntasksPerDim[1];
+                     neighPosition[1] %= ntasksPerDim[1];
                   }
 
                   neighPosition[2]=taskPosition[2]+z;
                   if(isPeriodic[2]) {
-                     neighPosition[2] += ntasks[2];
-                     neighPosition[2] %= ntasks[2];
+                     neighPosition[2] += ntasksPerDim[2];
+                     neighPosition[2] %= ntasksPerDim[2];
                   }
 
                   /*
                    * If those coordinates exist, figure out the responsible CPU
                    * and store its rank
                    */
-                  if(neighPosition[0]>=0 && neighPosition[0]<ntasks[0] && neighPosition[1]>=0
-                        && neighPosition[1]<ntasks[1] && neighPosition[2]>=0 && neighPosition[2]<ntasks[2]) {
+                  if(neighPosition[0]>=0 && neighPosition[0]<ntasksPerDim[0] && neighPosition[1]>=0
+                        && neighPosition[1]<ntasksPerDim[1] && neighPosition[2]>=0 && neighPosition[2]<ntasksPerDim[2]) {
 
                      // Calculate the rank
                      int neighRank;
@@ -368,8 +368,8 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
 
          // Determine size of our local grid
          for(int i=0; i<3; i++) {
-            localSize[i] = calcLocalSize(globalSize[i],ntasks[i], taskPosition[i]);
-            localStart[i] = calcLocalStart(globalSize[i],ntasks[i], taskPosition[i]);
+            localSize[i] = calcLocalSize(globalSize[i],ntasksPerDim[i], taskPosition[i]);
+            localStart[i] = calcLocalStart(globalSize[i],ntasksPerDim[i], taskPosition[i]);
          }
 
          if(  localSize[0] == 0 || (globalSize[0] > stencil && localSize[0] < stencil)
@@ -529,8 +529,8 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
          // Find the index in the task grid this Cell belongs to
          std::array<int, 3> taskIndex;
          for(int i=0; i<3; i++) {
-            int n_per_task = globalSize[i] / ntasks[i];
-            int remainder = globalSize[i] % ntasks[i];
+            int n_per_task = globalSize[i] / ntasksPerDim[i];
+            int remainder = globalSize[i] % ntasksPerDim[i];
 
             if(cell[i] < remainder * (n_per_task+1)) {
                taskIndex[i] = cell[i] / (n_per_task + 1);
@@ -555,8 +555,8 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
          std::array<int, 3> thatTasksStart;
          std::array<int, 3> thatTaskStorageSize;
          for(int i=0; i<3; i++) {
-            thatTasksStart[i] = calcLocalStart(globalSize[i], ntasks[i], taskIndex[i]);
-            thatTaskStorageSize[i] = calcLocalSize(globalSize[i], ntasks[i], taskIndex[i]) + 2 * stencil;
+            thatTasksStart[i] = calcLocalStart(globalSize[i], ntasksPerDim[i], taskIndex[i]);
+            thatTaskStorageSize[i] = calcLocalSize(globalSize[i], ntasksPerDim[i], taskIndex[i]) + 2 * stencil;
          }
 
          retVal.second = 0;
@@ -1075,7 +1075,7 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
 
       /*! Get the decomposition array*/
       std::array<Task_t, 3>& getDecomposition(){
-         return ntasks;
+         return ntasksPerDim;
       }
 
    private:
@@ -1090,7 +1090,7 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
 
       // We have, fundamentally, two different coordinate systems we're dealing with:
       // 1) Task grid in the MPI_Cartcomm
-      std::array<Task_t, 3> ntasks; //!< Number of tasks in each direction
+      std::array<Task_t, 3> ntasksPerDim; //!< Number of tasks in each direction
       std::array<Task_t, 3> taskPosition; //!< This task's position in the 3d task grid
       // 2) Cell numbers in global and local view
 
