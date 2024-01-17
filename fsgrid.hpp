@@ -504,6 +504,10 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
 
       }
 
+      void copyData(FsGrid other){
+         data = other.data; // Copy assignment
+      }
+
       /*! Finalize instead of destructor, as the MPI calls fail after the main program called MPI_Finalize().
        *  Cleans up the cartesian communicator
        */
