@@ -416,9 +416,9 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
                   std::array<int,3> subarrayStart;                  
                   const int shiftId = (x+1) * 9 + (y + 1) * 3 + (z + 1);
                   
-                  if((localSize[0] == 1 && x!= 0 ) ||
-                     (localSize[1] == 1 && y!= 0 ) ||
-                     (localSize[2] == 1 && z!= 0 ) ||
+                  if((ntasksPerDim[0] == 1 && x!= 0 ) ||
+                     (ntasksPerDim[1] == 1 && y!= 0 ) ||
+                     (ntasksPerDim[2] == 1 && z!= 0 ) ||
                      (x == 0 && y == 0 && z == 0)){
                      //skip flat dimension for 2 or 1D simulations, and self
                      neighbourSendType[shiftId] = MPI_DATATYPE_NULL;
@@ -504,8 +504,12 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
 
       }
 
-      void copyData(FsGrid other){
-         data = other.data; // Copy assignment
+      std::vector<T>& getData(){
+         return this->data;
+      }
+
+      void copyData(FsGrid &other){
+         this->data = other.getData(); // Copy assignment
       }
 
       /*! Finalize instead of destructor, as the MPI calls fail after the main program called MPI_Finalize().
