@@ -132,7 +132,7 @@ struct FsGridTools{
             if( i * j * k != nProcs ) {
                continue;
             }
-            if (k > GlobalSize[2]/minDomainSize[2]) {
+            if (k > (Task_t)GlobalSize[2]/minDomainSize[2]) {
                continue;
             }
 
