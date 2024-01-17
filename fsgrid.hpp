@@ -416,10 +416,9 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
                   std::array<int,3> subarrayStart;                  
                   const int shiftId = (x+1) * 9 + (y + 1) * 3 + (z + 1);
                   
-                  
-                  if((storageSize[0] == 1 && x!= 0 ) ||
-                     (storageSize[1] == 1 && y!= 0 ) ||
-                     (storageSize[2] == 1 && z!= 0 ) ||
+                  if((localSize[0] == 1 && x!= 0 ) ||
+                     (localSize[1] == 1 && y!= 0 ) ||
+                     (localSize[2] == 1 && z!= 0 ) ||
                      (x == 0 && y == 0 && z == 0)){
                      //skip flat dimension for 2 or 1D simulations, and self
                      neighbourSendType[shiftId] = MPI_DATATYPE_NULL;
@@ -552,8 +551,8 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
          }
 
          // Determine localID of that cell within the target task
-         std::array<int, 3> thatTasksStart;
-         std::array<int, 3> thatTaskStorageSize;
+         std::array<FsIndex_t, 3> thatTasksStart;
+         std::array<FsIndex_t, 3> thatTaskStorageSize;
          for(int i=0; i<3; i++) {
             thatTasksStart[i] = calcLocalStart(globalSize[i], ntasksPerDim[i], taskIndex[i]);
             thatTaskStorageSize[i] = calcLocalSize(globalSize[i], ntasksPerDim[i], taskIndex[i]) + 2 * stencil;
@@ -1097,7 +1096,7 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
       std::array<bool, 3> periodic; //!< Information about whether a given direction is periodic
       std::array<FsSize_t, 3> globalSize; //!< Global size of the simulation space, in cells
       std::array<FsIndex_t, 3> localSize;  //!< Local size of simulation space handled by this task (without ghost cells)
-      std::array<FsSize_t, 3> storageSize;  //!< Local size of simulation space handled by this task (including ghost cells)
+      std::array<FsIndex_t, 3> storageSize;  //!< Local size of simulation space handled by this task (including ghost cells)
       std::array<FsIndex_t, 3> localStart; //!< Offset of the local
                                           //!coordinate system against
                                           //!the global one
