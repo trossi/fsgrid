@@ -34,7 +34,8 @@ int main(int argc, char** argv) {
    std::array<int32_t, 3> globalSize{20,20,1};
    std::array<bool, 3> isPeriodic{false,false,true};
    {
-      FsGrid<int,1> testGrid(globalSize, MPI_COMM_WORLD, isPeriodic);
+      FsGridCouplingInformation gridCoupling;
+      FsGrid<int,1> testGrid(globalSize, MPI_COMM_WORLD, isPeriodic, gridCoupling);
 /*
       if(rank == 0) {
          std::cerr << " --- Test task mapping functions ---" << std::endl;
@@ -63,9 +64,9 @@ int main(int argc, char** argv) {
 
 
       
-      int z = 0;
-      for(int y = -1; y < localSize[1] + 1; y++){
-         for(int x = -1; x < localSize[0] + 1; x++){
+      FsGridTools::FsIndex_t z = 0;
+      for(FsGridTools::FsIndex_t y = -1; y < localSize[1] + 1; y++){
+         for(FsGridTools::FsIndex_t x = -1; x < localSize[0] + 1; x++){
             *(testGrid.get(x, y, z)) = rank;
          }
       }
@@ -75,11 +76,11 @@ int main(int argc, char** argv) {
       if(rank==1) {
          printf("local size %d %d %d\n", localSize[0], localSize[1], localSize[2]);
          printf("----------------------------------\n");
-         int z = 0;
+         FsGridTools::FsIndex_t z = 0;
          printf("z=%d\n", z);
-         for(int y = -1; y < localSize[1] + 1; y++){
+         for(FsGridTools::FsIndex_t y = -1; y < localSize[1] + 1; y++){
             printf("y=%d :", y);
-            for(int x = -1; x < localSize[0] +1;  x++){
+            for(FsGridTools::FsIndex_t x = -1; x < localSize[0] +1;  x++){
                printf("%d ", *(testGrid.get(x, y, z)));
             }
             printf("\n");
@@ -132,8 +133,8 @@ int main(int argc, char** argv) {
 
          // We are going to send data for all 8×8 Cells
          testGrid.setupForTransferIn(globalSize[0]*globalSize[1]);
-         for(int y=0; y<globalSize[1]; y++) {
-            for(int x=0; x<globalSize[0]; x++) {
+         for(FsGridTools::FsSize_t y=0; y<globalSize[1]; y++) {
+            for(FsGridTools::FsSize_t x=0; x<globalSize[0]; x++) {
                fillData[y*globalSize[0] + x] = x*y;
 
                testGrid.transferDataIn(y*globalSize[0]+x,&fillData[y*globalSize[0]+x]);
@@ -150,9 +151,9 @@ int main(int argc, char** argv) {
       for(int i=0; i<size; i++) {
          if(i == rank) {
             std::cerr << "Contents of Task #" << rank << ": " << std::endl;
-            std::array<int32_t,3> localSize = testGrid.getLocalSize();
-            for(int y=0; y<localSize[1]; y++) {
-               for(int x=0; x<localSize[0]; x++) {
+            std::array<FsGridTools::FsIndex_t,3> localSize = testGrid.getLocalSize();
+            for(FsGridTools::FsIndex_t y=0; y<localSize[1]; y++) {
+               for(FsGridTools::FsIndex_t x=0; x<localSize[0]; x++) {
                   std::cerr << *testGrid.get(x,y,0) << ", ";
                }
                std::cerr << std::endl;
@@ -168,8 +169,8 @@ int main(int argc, char** argv) {
          returnedData.resize(globalSize[0]*globalSize[1]);
 
          testGrid.setupForTransferOut(globalSize[0]*globalSize[1]);
-         for(int y=0; y<globalSize[1]; y++) {
-            for(int x=0; x<globalSize[0]; x++) {
+         for(FsGridTools::FsSize_t y=0; y<globalSize[1]; y++) {
+            for(FsGridTools::FsSize_t x=0; x<globalSize[0]; x++) {
                testGrid.transferDataOut(y*globalSize[0]+x,&returnedData[y*globalSize[0]+x]);
             }
          }
@@ -182,8 +183,8 @@ int main(int argc, char** argv) {
       if(rank == 0) {
          std::cerr << " --------- " << std::endl;
          std::cerr << "Returned array contents:" << std::endl;
-         for(int y=0; y<globalSize[1]; y++) {
-            for(int x=0; x<globalSize[0]; x++) {
+         for(FsGridTools::FsSize_t y=0; y<globalSize[1]; y++) {
+            for(FsGridTools::FsSize_t x=0; x<globalSize[0]; x++) {
                std::cerr << returnedData[y*globalSize[0]+x] << ", ";
             }
             std::cerr << std::endl;
