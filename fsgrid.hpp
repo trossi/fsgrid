@@ -416,9 +416,9 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
                   std::array<int,3> subarrayStart;                  
                   const int shiftId = (x+1) * 9 + (y + 1) * 3 + (z + 1);
                   
-                  if((ntasksPerDim[0] == 1 && x!= 0 ) ||
-                     (ntasksPerDim[1] == 1 && y!= 0 ) ||
-                     (ntasksPerDim[2] == 1 && z!= 0 ) ||
+                  if((storageSize[0] == 1 && x!= 0 ) ||
+                     (storageSize[1] == 1 && y!= 0 ) ||
+                     (storageSize[2] == 1 && z!= 0 ) ||
                      (x == 0 && y == 0 && z == 0)){
                      //skip flat dimension for 2 or 1D simulations, and self
                      neighbourSendType[shiftId] = MPI_DATATYPE_NULL;
