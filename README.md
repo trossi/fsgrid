@@ -1,4 +1,4 @@
-# fsgrid - a lightweight, static, cartesian grid for field solvers
+# FsGrid - a lightweight, static, cartesian grid for field solvers
 
 FsGrid is trying to be an uncomplicated, static (non-loadbalanced) cartesian grid for
 use in field solvers of kinetic plasma simulations. Independent of the actual spatial
