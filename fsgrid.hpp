@@ -26,20 +26,31 @@
 #include <limits>
 #include <stdint.h>
 #include <cassert>
+#include <stdio.h>
+#include <iomanip>
+#include <algorithm>
 
-
-
+#ifndef FS_MASTER_RANK
+#define FS_MASTER_RANK 0
+#endif
 
 struct FsGridTools{
+
+   typedef uint32_t FsSize_t; // Size type for global array indices
+   typedef int32_t FsIndex_t; // Size type for global/local array indices, incl. possible negative values
+
+   typedef int64_t LocalID;
+   typedef int64_t GlobalID;
+   typedef int Task_t; 
 
    //! Helper function: calculate position of the local coordinate space for the given dimension
    // \param globalCells Number of cells in the global Simulation, in this dimension
    // \param ntasks Total number of tasks in this dimension
    // \param my_n This task's position in this dimension
    // \return Cell number at which this task's domains cells start (actual cells, not counting ghost cells)
-   static int32_t calcLocalStart(int32_t globalCells, int ntasks, int my_n) {
-      int n_per_task = globalCells / ntasks;
-      int remainder = globalCells % ntasks;
+   static FsIndex_t calcLocalStart(FsSize_t globalCells, Task_t ntasks, Task_t my_n) {
+      FsIndex_t n_per_task = globalCells / ntasks;
+      FsIndex_t remainder = globalCells % ntasks;
 
       if(my_n < remainder) {
          return my_n * (n_per_task+1);
@@ -47,78 +58,152 @@ struct FsGridTools{
          return my_n * n_per_task + remainder;
       }
    }
-      //! Helper function: calculate size of the local coordinate space for the given dimension
-      // \param globalCells Number of cells in the global Simulation, in this dimension
-      // \param ntasks Total number of tasks in this dimension
-      // \param my_n This task's position in this dimension
-      // \return Nmuber of cells for this task's local domain (actual cells, not counting ghost cells)
-      static int32_t calcLocalSize(int32_t globalCells, int ntasks, int my_n) {
-         int n_per_task = globalCells/ntasks;
-         int remainder = globalCells%ntasks;
-         if(my_n < remainder) {
-            return n_per_task+1;
+
+   //! Helper function: given a global cellID, calculate the global cell coordinate from it.
+   // This is then used do determine the task responsible for this cell, and the
+   // local cell index in it.
+   static std::array<FsIndex_t, 3> globalIDtoCellCoord(GlobalID id, std::array<FsSize_t, 3> &globalSize) {
+
+      // Transform globalID to global cell coordinate
+      std::array<FsIndex_t, 3> cell;
+
+      assert(id >= 0);
+      assert(id < globalSize[0] * globalSize[1] * globalSize[2]);
+
+      int stride=1;
+      for(int i=0; i<3; i++) {
+         cell[i] = (id / stride) % globalSize[i];
+         stride *= globalSize[i];
+      }
+
+      return cell;
+   }
+
+   //! Helper function: calculate size of the local coordinate space for the given dimension
+   // \param globalCells Number of cells in the global Simulation, in this dimension
+   // \param ntasks Total number of tasks in this dimension
+   // \param my_n This task's position in this dimension
+   // \return Number of cells for this task's local domain (actual cells, not counting ghost cells)
+   static FsIndex_t calcLocalSize(FsSize_t globalCells, Task_t ntasks, Task_t my_n) {
+      FsIndex_t n_per_task = globalCells/ntasks;
+      FsIndex_t remainder = globalCells%ntasks;
+      if(my_n < remainder) {
+         return n_per_task+1;
+      } else {
+         return n_per_task;
+      }
+   }
+
+   //! Helper function to optimize decomposition of this grid over the given number of tasks
+   static void computeDomainDecomposition(const std::array<FsSize_t, 3>& GlobalSize, Task_t nProcs, std::array<Task_t,3>& processDomainDecomposition, int stencilSize=1, int verbose = 0) {
+      int myRank, MPI_flag;
+      MPI_Initialized(&MPI_flag);
+      if(MPI_flag){
+         MPI_Comm_rank(MPI_COMM_WORLD, &myRank); // TODO allow for separate communicator
+      } else {
+         myRank = FS_MASTER_RANK;
+      }
+
+      std::array<FsSize_t, 3> systemDim;
+      std::array<FsSize_t, 3> processBox;
+      std::array<FsSize_t, 3> minDomainSize;
+      int64_t optimValue = std::numeric_limits<int64_t>::max();
+      std::vector<std::pair<int64_t,std::array<Task_t,3>>> scored_decompositions;
+      scored_decompositions.push_back(std::pair<int64_t,std::array<Task_t,3>>(optimValue,{0,0,0}));
+      for(int i = 0; i < 3; i++) {
+         systemDim[i] = GlobalSize[i];
+         if(GlobalSize[i] == 1) {
+            // In 2D simulation domains, the "thin" dimension can be a single cell thick.
+            minDomainSize[i] = 1;
          } else {
-            return n_per_task;
+            // Otherwise, it needs to be at least as large as our ghost
+            // stencil, so that ghost communication remains consistent.
+            minDomainSize[i] = stencilSize;
          }
       }
-
-
-      //! Helper function to optimize decomposition of this grid over the given number of tasks
-      static void computeDomainDecomposition(const std::array<int, 3>& GlobalSize, int nProcs, std::array<int,3>& processDomainDecomposition, int stencilSize=1) {
-         std::array<double, 3> systemDim;
-         std::array<double, 3 > processBox;
-         std::array<int, 3> minDomainSize;
-         double optimValue = std::numeric_limits<double>::max();
-         for(int i = 0; i < 3; i++) {
-            systemDim[i] = (double)GlobalSize[i];
-            if(GlobalSize[i] == 1) {
-               // In 2D simulation domains, the "thin" dimension can be a single cell thick.
-               minDomainSize[i] = 1;
-            } else {
-               // Otherwise, it needs to be at least as large as our ghost
-               // stencil, so that ghost communication remains consistent.
-               minDomainSize[i] = stencilSize;
+      processDomainDecomposition = {1, 1, 1};
+      for (Task_t i = 1; i <= std::min(nProcs, (Task_t)(GlobalSize[0]/minDomainSize[0])); i++) {
+         for (Task_t j = 1; j <= std::min(nProcs, (Task_t)(GlobalSize[1]/minDomainSize[1])) ; j++) {
+            if( i * j  > nProcs ){
+               break;
             }
-         }
-         processDomainDecomposition = {1, 1, 1};
-         for (int i = 1; i <= std::min(nProcs, GlobalSize[0]); i++) {
-            processBox[0] = std::max(systemDim[0]/i, (double)minDomainSize[0]);
-            for (int j = 1; j <= std::min(nProcs, GlobalSize[1]) ; j++) {
-               if( i * j  > nProcs )
-                  break;
-               processBox[1] = std::max(systemDim[1]/j, (double)minDomainSize[1]);
-               for (int k = 1; k <= std::min(nProcs, GlobalSize[2]); k++) {
-                  if( i * j * k > nProcs )
-                     break;
-                  processBox[2] = std::max(systemDim[2]/k, (double)minDomainSize[2]);
-                  double value = 
-                     10 * processBox[0] * processBox[1] * processBox[2] + 
-                     (i > 1 ? processBox[1] * processBox[2]: 0) +
-                     (j > 1 ? processBox[0] * processBox[2]: 0) +
-                     (k > 1 ? processBox[0] * processBox[1]: 0);
+            Task_t k = nProcs/(i*j);
+            // No need to optimize an incompatible DD, also checks for missing remainders
+            if( i * j * k != nProcs ) {
+               continue;
+            }
+            if (k > (Task_t)(GlobalSize[2]/minDomainSize[2])) {
+               continue;
+            }
 
-                  if(value < optimValue ){
-                     optimValue = value;
-                     processDomainDecomposition[0] = i;
-                     processDomainDecomposition[1] = j;
-                     processDomainDecomposition[2] = k;
-                  }
+            processBox[0] = calcLocalSize(systemDim[0],i,0);
+            processBox[1] = calcLocalSize(systemDim[1],j,0);
+            processBox[2] = calcLocalSize(systemDim[2],k,0);
+
+            int64_t value = 
+               (i > 1 ? processBox[1] * processBox[2]: 0) +
+               (j > 1 ? processBox[0] * processBox[2]: 0) +
+               (k > 1 ? processBox[0] * processBox[1]: 0);
+              
+             // account for singular domains
+            if (i!=1 && j!= 1 && k!=1) {
+               value *= 13; // 26 neighbours to communicate to
+            }
+            if (i==1 && j!= 1 && k!=1) {
+               value *= 4; // 8 neighbours to communicate to
+            }
+            if (i!=1 && j== 1 && k!=1) {
+               value *= 4; // 8 neighbours to communicate to
+            }
+            if (i!=1 && j!= 1 && k==1) {
+               value *= 4; // 8 neighbours to communicate to
+            }
+            // else: 2 neighbours to communicate to, no need to adjust
+
+            if(value <= optimValue ){
+               optimValue = value;
+               if(value < scored_decompositions.back().first){
+                  scored_decompositions.clear();
                }
+               scored_decompositions.push_back(std::pair<int64_t, std::array<Task_t,3>>(value, {i,j,k}));
             }
          }
+      }
 
-         if(optimValue == std::numeric_limits<double>::max() ||
-               processDomainDecomposition[0] * processDomainDecomposition[1] * processDomainDecomposition[2] != nProcs) {
-            std::cerr << "FSGrid domain decomposition failed, are you running on a prime number of tasks?" << std::endl;
-            throw std::runtime_error("FSGrid computeDomainDecomposition failed");
+      if(myRank == FS_MASTER_RANK && verbose){
+         std::cout << "(FSGRID) Number of equal minimal-surface decompositions found: " << scored_decompositions.size() << "\n";
+         for (auto kv : scored_decompositions){
+            std::cout << "(FSGRID) Decomposition " << kv.second[0] <<","<<kv.second[1]<<","<<kv.second[2]<<  " "<< " for processBox size " <<
+            systemDim[0]/kv.second[0] << " " << systemDim[1]/kv.second[1] << " " << systemDim[2]/kv.second[2] <<"\n";
          }
       }
+
+      // Taking the first scored_decomposition (smallest X decomposition)
+      processDomainDecomposition[0] = scored_decompositions[0].second[0];
+      processDomainDecomposition[1] = scored_decompositions[0].second[1];
+      processDomainDecomposition[2] = scored_decompositions[0].second[2];
+
+
+      if(optimValue == std::numeric_limits<int64_t>::max() ||
+            (Task_t)(processDomainDecomposition[0] * processDomainDecomposition[1] * processDomainDecomposition[2]) != nProcs) {
+         if(myRank==0){
+            std::cerr << "(FSGRID) Domain decomposition failed, are you running on a prime number of tasks?" << std::endl;
+         }
+         throw std::runtime_error("FSGrid computeDomainDecomposition failed");
+      }
+      if(myRank==0 && verbose){
+         std::cout << "(FSGRID) decomposition chosen as "<< processDomainDecomposition[0] << " " << processDomainDecomposition[1] << " " << processDomainDecomposition[2] << ", for processBox sizes " <<
+         systemDim[0]/processDomainDecomposition[0] << " " << systemDim[1]/processDomainDecomposition[1] << " " << systemDim[2]/processDomainDecomposition[2] <<
+         " \n";
+      }
+   }
+      
 
 };
 
 
 struct FsGridCouplingInformation {
-   std::vector<int> externalRank; //!< MPI rank that each cell is being communicated to externally
+   std::vector<FsGridTools::Task_t> externalRank; //!< MPI rank that each cell is being communicated to externally
 
    void setCouplingSize(size_t totalStorageSize) {
 
@@ -127,7 +212,7 @@ struct FsGridCouplingInformation {
       if(externalRank.size() != totalStorageSize) {
          externalRank.resize(totalStorageSize);
       }
-      for(uint i=0; i<externalRank.size(); i++) {
+      for(size_t i=0; i<externalRank.size(); i++) {
          externalRank[i] = MPI_PROC_NULL;
       }
    }
@@ -140,20 +225,23 @@ struct FsGridCouplingInformation {
  */
 template <typename T, int stencil> class FsGrid : public FsGridTools{
 
+   template<typename ArrayT> void swapArray(std::array<ArrayT, 3>& array) {
+      ArrayT a = array[0];
+      array[0] = array[2];
+      array[2] = a;
+   }
+
    public:
 
-      typedef int64_t LocalID;
-      typedef int64_t GlobalID;
-
    // Legacy constructor from coupling reference
-   FsGrid(std::array<int32_t,3> globalSize, MPI_Comm parent_comm, std::array<bool,3> isPeriodic, FsGridCouplingInformation& coupling) : FsGrid(globalSize, parent_comm, isPeriodic, &coupling) {}
+   FsGrid(std::array<FsSize_t,3> globalSize, MPI_Comm parent_comm, std::array<bool,3> isPeriodic, FsGridCouplingInformation& coupling, const std::array<Task_t, 3>& decomposition = {0,0,0}, bool verbose = false) : FsGrid(globalSize, parent_comm, isPeriodic, &coupling, decomposition, verbose) {}
 
       /*! Constructor for this grid.
        * \param globalSize Cell size of the global simulation domain.
        * \param MPI_Comm The MPI communicator this grid should use.
        * \param isPeriodic An array specifying, for each dimension, whether it is to be treated as periodic.
        */
-   FsGrid(std::array<int32_t,3> globalSize, MPI_Comm parent_comm, std::array<bool,3> isPeriodic, FsGridCouplingInformation* coupling)
+   FsGrid(std::array<FsSize_t,3> globalSize, MPI_Comm parent_comm, std::array<bool,3> isPeriodic, FsGridCouplingInformation* coupling, const std::array<Task_t, 3>& decomposition = {0,0,0}, bool verbose = false)
             : globalSize(globalSize), coupling(coupling) {
          int status;
          int size;
@@ -172,17 +260,31 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
             if(fsgridProcs > 0 && fsgridProcs < size)
                size = fsgridProcs;
          }
-       
-         // Heuristically choose a good domain decomposition for our field size
-         computeDomainDecomposition(globalSize, size, ntasks, stencil);
+
+         std::array<Task_t,3> emptyarr = {0,0,0};
+         if (decomposition == emptyarr){
+            // If decomposition isn't pre-defined, heuristically choose a good domain decomposition for our field size
+            computeDomainDecomposition(globalSize, size, ntasksPerDim, stencil, verbose);
+         } else {
+            ntasksPerDim = decomposition;
+            if (ntasksPerDim[0]*ntasksPerDim[1]*ntasksPerDim[2] != size){
+               std::cerr << "Given decomposition ("<<ntasksPerDim[0] << " " << ntasksPerDim[1] << " " << ntasksPerDim[2] << ") does not distribute to the number of tasks given" << std::endl;
+               throw std::runtime_error("Given decomposition does not distribute to the number of tasks given");
+            }
+            ntasksPerDim[0] = decomposition[0];
+            ntasksPerDim[1] = decomposition[1];
+            ntasksPerDim[2] = decomposition[2];
+         }
          
          //set private array
          periodic = isPeriodic;
-         //set temporary int array for MPI_Cart_create
-         std::array<int, 3> isPeriodicInt;
+         //set temporary int arrays for MPI_Cart_create
+         std::array<int, 3> isPeriodicInt, ntasksInt;
          for(unsigned int i=0; i < isPeriodic.size(); i++) {
             isPeriodicInt[i] = (int)isPeriodic[i];
+            ntasksInt[i] = (int)ntasksPerDim[i];
          }  
+<<<<<<< HEAD
 
          // Create a temporary FS subcommunicator for the MPI_Cart_create
          int colorFs = (parentRank < size) ? 1 : MPI_UNDEFINED;
@@ -325,7 +427,7 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
          for(int x=-1; x<=1;x++) {
             for(int y=-1; y<=1;y++) {
                for(int z=-1; z<=1; z++) {
-                  std::array<int,3> neighPosition;
+                  std::array<Task_t,3> neighPosition;
 
                   /*
                    * Figure out the coordinates of the neighbours in all three
@@ -333,28 +435,28 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
                    */
                   neighPosition[0]=taskPosition[0]+x;
                   if(isPeriodic[0]) {
-                     neighPosition[0] += ntasks[0];
-                     neighPosition[0] %= ntasks[0];
+                     neighPosition[0] += ntasksPerDim[0];
+                     neighPosition[0] %= ntasksPerDim[0];
                   }
 
                   neighPosition[1]=taskPosition[1]+y;
                   if(isPeriodic[1]) {
-                     neighPosition[1] += ntasks[1];
-                     neighPosition[1] %= ntasks[1];
+                     neighPosition[1] += ntasksPerDim[1];
+                     neighPosition[1] %= ntasksPerDim[1];
                   }
 
                   neighPosition[2]=taskPosition[2]+z;
                   if(isPeriodic[2]) {
-                     neighPosition[2] += ntasks[2];
-                     neighPosition[2] %= ntasks[2];
+                     neighPosition[2] += ntasksPerDim[2];
+                     neighPosition[2] %= ntasksPerDim[2];
                   }
 
                   /*
                    * If those coordinates exist, figure out the responsible CPU
                    * and store its rank
                    */
-                  if(neighPosition[0]>=0 && neighPosition[0]<ntasks[0] && neighPosition[1]>=0
-                        && neighPosition[1]<ntasks[1] && neighPosition[2]>=0 && neighPosition[2]<ntasks[2]) {
+                  if(neighPosition[0]>=0 && neighPosition[0]<ntasksPerDim[0] && neighPosition[1]>=0
+                        && neighPosition[1]<ntasksPerDim[1] && neighPosition[2]>=0 && neighPosition[2]<ntasksPerDim[2]) {
 
                      // Calculate the rank
                      int neighRank;
@@ -381,6 +483,24 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
             }
          }
 
+<<<<<<< HEAD
+=======
+
+         // Determine size of our local grid
+         for(int i=0; i<3; i++) {
+            localSize[i] = calcLocalSize(globalSize[i],ntasksPerDim[i], taskPosition[i]);
+            localStart[i] = calcLocalStart(globalSize[i],ntasksPerDim[i], taskPosition[i]);
+         }
+
+         if(  localSize[0] == 0 || (globalSize[0] > stencil && localSize[0] < stencil)
+           || localSize[1] == 0 || (globalSize[1] > stencil && localSize[1] < stencil)
+           || localSize[2] == 0 || (globalSize[2] > stencil && localSize[2] < stencil)) {
+            std::cerr << "FSGrid space partitioning leads to a space that is too small on Rank " << rank << ". ProcessBox was [" << localSize[0] << ", " << localSize[1] << ", " << localSize[2] <<"]" <<std::endl;
+            std::cerr << "Please run with a different number of Tasks, so that space is better divisible." <<std::endl;
+            throw std::runtime_error("FSGrid too small domains");
+         }
+
+>>>>>>> fcc1376712a706c5c819050acac55b35b9b5f291
          // Allocate local storage array
          size_t totalStorageSize=1;
          for(int i=0; i<3; i++) {
@@ -417,7 +537,6 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
                   std::array<int,3> subarrayStart;                  
                   const int shiftId = (x+1) * 9 + (y + 1) * 3 + (z + 1);
                   
-                  
                   if((storageSize[0] == 1 && x!= 0 ) ||
                      (storageSize[1] == 1 && y!= 0 ) ||
                      (storageSize[2] == 1 && z!= 0 ) ||
@@ -449,7 +568,7 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
                      if(storageSize[i] == 1) 
                         subarrayStart[i] = 0;
 
-                  std::array<int,3> swappedStorageSize = storageSize;
+                  std::array<int,3> swappedStorageSize = {(int)storageSize[0],(int)storageSize[1],(int)storageSize[2]};
                   swapArray(swappedStorageSize);
                   swapArray(subarraySize);
                   swapArray(subarrayStart);                  
@@ -506,6 +625,14 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
 
       }
 
+      std::vector<T>& getData(){
+         return this->data;
+      }
+
+      void copyData(FsGrid &other){
+         this->data = other.getData(); // Copy assignment
+      }
+
       /*! Finalize instead of destructor, as the MPI calls fail after the main program called MPI_Finalize().
        *  Cleans up the cartesian communicator
        */
@@ -536,13 +663,13 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
        */
       std::pair<int,LocalID> getTaskForGlobalID(GlobalID id) {
          // Transform globalID to global cell coordinate
-         std::array<int, 3> cell = globalIDtoCellCoord(id);
+         std::array<FsIndex_t, 3> cell = FsGridTools::globalIDtoCellCoord(id, globalSize);
 
          // Find the index in the task grid this Cell belongs to
          std::array<int, 3> taskIndex;
          for(int i=0; i<3; i++) {
-            int n_per_task = globalSize[i] / ntasks[i];
-            int remainder = globalSize[i] % ntasks[i];
+            int n_per_task = globalSize[i] / ntasksPerDim[i];
+            int remainder = globalSize[i] % ntasksPerDim[i];
 
             if(cell[i] < remainder * (n_per_task+1)) {
                taskIndex[i] = cell[i] / (n_per_task + 1);
@@ -564,11 +691,11 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
          }
 
          // Determine localID of that cell within the target task
-         std::array<int, 3> thatTasksStart;
-         std::array<int, 3> thatTaskStorageSize;
+         std::array<FsIndex_t, 3> thatTasksStart;
+         std::array<FsIndex_t, 3> thatTaskStorageSize;
          for(int i=0; i<3; i++) {
-            thatTasksStart[i] = calcLocalStart(globalSize[i], ntasks[i], taskIndex[i]);
-            thatTaskStorageSize[i] = calcLocalSize(globalSize[i], ntasks[i], taskIndex[i]) + 2 * stencil;
+            thatTasksStart[i] = calcLocalStart(globalSize[i], ntasksPerDim[i], taskIndex[i]);
+            thatTaskStorageSize[i] = calcLocalSize(globalSize[i], ntasksPerDim[i], taskIndex[i]) + 2 * stencil;
          }
 
          retVal.second = 0;
@@ -592,11 +719,11 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
        * \param y The cell's global y coordinate
        * \param z The cell's global z coordinate
        */
-      std::array<int, 3> globalToLocal(int x, int y, int z) {
-         std::array<int, 3> retval;
-         retval[0] = x - localStart[0];
-         retval[1] = y - localStart[1];
-         retval[2] = z - localStart[2];
+      std::array<FsIndex_t, 3> globalToLocal(FsSize_t x, FsSize_t y, FsSize_t z) {
+         std::array<FsIndex_t, 3> retval;
+         retval[0] = (FsIndex_t)x - localStart[0];
+         retval[1] = (FsIndex_t)y - localStart[1];
+         retval[2] = (FsIndex_t)z - localStart[2];
 
          if(retval[0] >= localSize[0] || retval[1] >= localSize[1] || retval[2] >= localSize[2]
                || retval[0] < 0 || retval[1] < 0 || retval[2] < 0) {
@@ -652,13 +779,13 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
             coupling->externalRank[i] = MPI_PROC_NULL;
          }
 
-         for(int z=0; z<localSize[2]; z++) {
-            for(int y=0; y<localSize[1]; y++) {
-               for(int x=0; x<localSize[0]; x++) {
+         for(FsIndex_t z=0; z<localSize[2]; z++) {
+            for(FsIndex_t y=0; y<localSize[1]; y++) {
+               for(FsIndex_t x=0; x<localSize[0]; x++) {
                   // Calculate LocalID for this cell
                   LocalID thisCell = LocalIDForCoords(x,y,z);
                   assert(numRequests < requests.size());
-                  assert(thisCell < coupling->externalRank.size());
+                  assert(thisCell < (int64_t)coupling->externalRank.size());
                   status = MPI_Irecv(&coupling->externalRank[thisCell], 1, MPI_INT, MPI_ANY_SOURCE, thisCell, comm3d,
                         &requests[numRequests++]);
                   if(status != MPI_SUCCESS) {
@@ -711,9 +838,9 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
          requests.resize(localSize[0]*localSize[1]*localSize[2] + cellsToSend);
          numRequests=0;
 
-         for(int z=0; z<localSize[2]; z++) {
-            for(int y=0; y<localSize[1]; y++) {
-               for(int x=0; x<localSize[0]; x++) {
+         for(FsIndex_t z=0; z<localSize[2]; z++) {
+            for(FsIndex_t y=0; y<localSize[1]; y++) {
+               for(FsIndex_t x=0; x<localSize[0]; x++) {
                   // Calculate LocalID for this cell
                   LocalID thisCell = LocalIDForCoords(x,y,z);
                   assert(numRequests < requests.size());
@@ -795,9 +922,9 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
        */
       void finishTransfersOut() {
          int status;
-         for(int z=0; z<localSize[2]; z++) {
-            for(int y=0; y<localSize[1]; y++) {
-               for(int x=0; x<localSize[0]; x++) {
+         for(FsIndex_t z=0; z<localSize[2]; z++) {
+            for(FsIndex_t y=0; y<localSize[1]; y++) {
+               for(FsIndex_t x=0; x<localSize[0]; x++) {
                   // Calculate LocalID for this cell
                   LocalID thisCell = LocalIDForCoords(x,y,z);
                   assert(numRequests < requests.size());
@@ -864,19 +991,19 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
 
       /*! Get the size of the local domain handled by this grid.
        */
-      std::array<int32_t, 3>& getLocalSize() {
+      std::array<FsIndex_t, 3>& getLocalSize() {
          return localSize;
       }
 
-      /*! Get the sstart coordinates of the local domain handled by this grid.
+      /*! Get the start coordinates of the local domain handled by this grid.
        */
-      std::array<int32_t, 3>& getLocalStart() {
+      std::array<FsIndex_t, 3>& getLocalStart() {
          return localStart;
       }
 
       /*! Get global size of the fsgrid domain
        */
-      std::array<int32_t, 3>& getGlobalSize() {
+      std::array<FsSize_t, 3>& getGlobalSize() {
          return globalSize;
       }
 
@@ -888,8 +1015,8 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
        *
        * \return Global cell coordinates
        */
-      std::array<int32_t, 3> getGlobalIndices(int x, int y, int z) {
-         std::array<int32_t, 3> retval;
+      std::array<FsIndex_t, 3> getGlobalIndices(int64_t x, int64_t y, int64_t z) {
+         std::array<FsIndex_t, 3> retval;
          retval[0] = localStart[0] + x;
          retval[1] = localStart[1] + y;
          retval[2] = localStart[2] + z;
@@ -1105,6 +1232,11 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
          }
       }
 
+      /*! Get the decomposition array*/
+      std::array<Task_t, 3>& getDecomposition(){
+         return ntasksPerDim;
+      }
+
    private:
       //! MPI Cartesian communicator used in this grid
       MPI_Comm comm1d = MPI_COMM_NULL;
@@ -1120,15 +1252,15 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
 
       // We have, fundamentally, two different coordinate systems we're dealing with:
       // 1) Task grid in the MPI_Cartcomm
-      std::array<int, 3> ntasks; //!< Number of tasks in each direction
-      std::array<int, 3> taskPosition; //!< This task's position in the 3d task grid
+      std::array<Task_t, 3> ntasksPerDim; //!< Number of tasks in each direction
+      std::array<Task_t, 3> taskPosition; //!< This task's position in the 3d task grid
       // 2) Cell numbers in global and local view
 
       std::array<bool, 3> periodic; //!< Information about whether a given direction is periodic
-      std::array<int32_t, 3> globalSize; //!< Global size of the simulation space, in cells
-      std::array<int32_t, 3> localSize;  //!< Local size of simulation space handled by this task (without ghost cells)
-      std::array<int32_t, 3> storageSize;  //!< Local size of simulation space handled by this task (including ghost cells)
-      std::array<int32_t, 3> localStart; //!< Offset of the local
+      std::array<FsSize_t, 3> globalSize; //!< Global size of the simulation space, in cells
+      std::array<FsIndex_t, 3> localSize;  //!< Local size of simulation space handled by this task (without ghost cells)
+      std::array<FsIndex_t, 3> storageSize;  //!< Local size of simulation space handled by this task (including ghost cells)
+      std::array<FsIndex_t, 3> localStart; //!< Offset of the local
                                           //!coordinate system against
                                           //!the global one
 
@@ -1141,30 +1273,4 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
 
       //! Actual storage of field data
       std::vector<T> data;
-
-      //! Helper function: given a global cellID, calculate the global cell coordinate from it.
-      // This is then used do determine the task responsible for this cell, and the
-      // local cell index in it.
-      std::array<int, 3> globalIDtoCellCoord(GlobalID id) {
-
-         // Transform globalID to global cell coordinate
-         std::array<int, 3> cell;
-
-         assert(id >= 0);
-         assert(id < globalSize[0] * globalSize[1] * globalSize[2]);
-
-         int stride=1;
-         for(int i=0; i<3; i++) {
-            cell[i] = (id / stride) % globalSize[i];
-            stride *= globalSize[i];
-         }
-
-         return cell;
-      }
-
-      void swapArray(std::array<int, 3>& array) {
-         int a = array[0];
-         array[0] = array[2];
-         array[2] = a;
-      }
 };
