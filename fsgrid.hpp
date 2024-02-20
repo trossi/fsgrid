@@ -284,7 +284,6 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
             isPeriodicInt[i] = (int)isPeriodic[i];
             ntasksInt[i] = (int)ntasksPerDim[i];
          }  
-<<<<<<< HEAD
 
          // Create a temporary FS subcommunicator for the MPI_Cart_create
          int colorFs = (parentRank < size) ? 1 : MPI_UNDEFINED;
@@ -293,7 +292,7 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
          if(colorFs != MPI_UNDEFINED){
            // Create cartesian communicator. Note, that reorder is false so
            // ranks match the ones in parent_comm
-           status = MPI_Cart_create(comm1d, 3, ntasks.data(), isPeriodicInt.data(), 0, &comm3d);
+           status = MPI_Cart_create(comm1d, 3, ntasksPerDim.data(), isPeriodicInt.data(), 0, &comm3d);
 
            if(status != MPI_SUCCESS) {
              std::cerr << "Creating cartesian communicatior failed when attempting to create FsGrid!" << std::endl;
@@ -327,7 +326,7 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
 
          if(colorAux != MPI_UNDEFINED){
            // Create an aux cartesian communicator corresponding to the comm3d (but shidted).
-           status = MPI_Cart_create(comm1d_aux, 3, ntasks.data(), isPeriodicInt.data(), 0, &comm3d_aux);
+           status = MPI_Cart_create(comm1d_aux, 3, ntasksPerDim.data(), isPeriodicInt.data(), 0, &comm3d_aux);
            if(status != MPI_SUCCESS) {
              std::cerr << "Creating cartesian communicatior failed when attempting to create FsGrid!" << std::endl;
              throw std::runtime_error("FSGrid communicator setup failed");
@@ -392,8 +391,8 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
 
          // Determine size of our local grid
          for(int i=0; i<3; i++) {
-            localSize[i] = calcLocalSize(globalSize[i],ntasks[i], taskPosition[i]);
-            localStart[i] = calcLocalStart(globalSize[i],ntasks[i], taskPosition[i]);
+            localSize[i] = calcLocalSize(globalSize[i],ntasksPerDim[i], taskPosition[i]);
+            localStart[i] = calcLocalStart(globalSize[i],ntasksPerDim[i], taskPosition[i]);
          }
 
          if(  localSize[0] == 0 || (globalSize[0] > stencil && localSize[0] < stencil)
@@ -483,9 +482,6 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
             }
          }
 
-<<<<<<< HEAD
-=======
-
          // Determine size of our local grid
          for(int i=0; i<3; i++) {
             localSize[i] = calcLocalSize(globalSize[i],ntasksPerDim[i], taskPosition[i]);
@@ -500,7 +496,6 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
             throw std::runtime_error("FSGrid too small domains");
          }
 
->>>>>>> fcc1376712a706c5c819050acac55b35b9b5f291
          // Allocate local storage array
          size_t totalStorageSize=1;
          for(int i=0; i<3; i++) {
@@ -1205,7 +1200,7 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
 
       /*! Get the number of ranks in the FsGrid communicator */
       int getSize() {
-        return ntasks[0] * ntasks[1] * ntasks[2];
+        return ntasksPerDim[0] * ntasksPerDim[1] * ntasksPerDim[2];
       }
 
       /*! Get in which directions, if any, this grid is periodic */
