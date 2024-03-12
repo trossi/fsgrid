@@ -482,20 +482,6 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
             }
          }
 
-         // Determine size of our local grid
-         for(int i=0; i<3; i++) {
-            localSize[i] = calcLocalSize(globalSize[i],ntasksPerDim[i], taskPosition[i]);
-            localStart[i] = calcLocalStart(globalSize[i],ntasksPerDim[i], taskPosition[i]);
-         }
-
-         if(  localSize[0] == 0 || (globalSize[0] > stencil && localSize[0] < stencil)
-           || localSize[1] == 0 || (globalSize[1] > stencil && localSize[1] < stencil)
-           || localSize[2] == 0 || (globalSize[2] > stencil && localSize[2] < stencil)) {
-            std::cerr << "FSGrid space partitioning leads to a space that is too small on Rank " << rank << ". ProcessBox was [" << localSize[0] << ", " << localSize[1] << ", " << localSize[2] <<"]" <<std::endl;
-            std::cerr << "Please run with a different number of Tasks, so that space is better divisible." <<std::endl;
-            throw std::runtime_error("FSGrid too small domains");
-         }
-
          // Allocate local storage array
          size_t totalStorageSize=1;
          for(int i=0; i<3; i++) {
