@@ -246,7 +246,21 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
          int status;
          int size;
 
-         status = MPI_Comm_size(parent_comm, &size);
+         // Get parent_comm info
+         int parentRank;
+         MPI_Comm_rank(parent_comm, &parentRank);
+         int parentSize;
+         MPI_Comm_size(parent_comm, &parentSize);
+
+         // If environment variable FSGRID_PROCS is set, 
+         // use that for determining the number of FS-processes
+         size = parentSize;
+         if(getenv("FSGRID_PROCS") != NULL) {
+            const int fsgridProcs = atoi(getenv("FSGRID_PROCS"));
+            if(fsgridProcs > 0 && fsgridProcs < size)
+               size = fsgridProcs;
+         }
+
          std::array<Task_t,3> emptyarr = {0,0,0};
          if (decomposition == emptyarr){
             // If decomposition isn't pre-defined, heuristically choose a good domain decomposition for our field size
@@ -270,31 +284,134 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
             isPeriodicInt[i] = (int)isPeriodic[i];
             ntasksInt[i] = (int)ntasksPerDim[i];
          }  
-         
-         // Create cartesian communicator. Note, that reorder is false so
-         // ranks match the ones in parent_comm
-         status = MPI_Cart_create(parent_comm, 3, ntasksInt.data(), isPeriodicInt.data(), 0, &comm3d);
-         if(status != MPI_SUCCESS) {
-            std::cerr << "Creating cartesian communicatior failed when attempting to create FsGrid!" << std::endl;
-            throw std::runtime_error("FSGrid communicator setup failed");
+
+         // Create a temporary FS subcommunicator for the MPI_Cart_create
+         int colorFs = (parentRank < size) ? 1 : MPI_UNDEFINED;
+         MPI_Comm_split(parent_comm, colorFs, parentRank, &comm1d);
+
+         if(colorFs != MPI_UNDEFINED){
+           // Create cartesian communicator. Note, that reorder is false so
+           // ranks match the ones in parent_comm
+           status = MPI_Cart_create(comm1d, 3, ntasksPerDim.data(), isPeriodicInt.data(), 0, &comm3d);
+
+           if(status != MPI_SUCCESS) {
+             std::cerr << "Creating cartesian communicatior failed when attempting to create FsGrid!" << std::endl;
+             throw std::runtime_error("FSGrid communicator setup failed");
+           }
+
+           status = MPI_Comm_rank(comm3d, &rank);
+           if(status != MPI_SUCCESS) {
+              std::cerr << "Getting rank failed when attempting to create FsGrid!" << std::endl;
+  
+              // Without a rank, there's really not much we can do. Just return an uninitialized grid
+              // (I suppose we'll crash after this, anyway)
+              return;
+           }
+  
+           // Determine our position in the resulting task-grid
+           status = MPI_Cart_coords(comm3d, rank, 3, taskPosition.data());
+           if(status != MPI_SUCCESS) {
+              std::cerr << "Rank " << rank
+                 << " unable to determine own position in cartesian communicator when attempting to create FsGrid!"
+                 << std::endl;
+           }
          }
 
-         status = MPI_Comm_rank(comm3d, &rank);
-         if(status != MPI_SUCCESS) {
-            std::cerr << "Getting rank failed when attempting to create FsGrid!" << std::endl;
+         // Create a temporary aux subcommunicator for the (Aux) MPI_Cart_create
+         int colorAux = (parentRank > (parentSize - 1) % size) ? (parentRank - (parentSize % size)) / size : MPI_UNDEFINED;
+         MPI_Comm_split(parent_comm, colorAux, parentRank, &comm1d_aux);
 
-            // Without a rank, there's really not much we can do. Just return an uninitialized grid
-            // (I suppose we'll crash after this, anyway)
-            return;
-         }
+         int rankAux;
+         std::array<int, 3> taskPositionAux;
 
-
-         // Determine our position in the resulting task-grid
-         status = MPI_Cart_coords(comm3d, rank, 3, taskPosition.data());
-         if(status != MPI_SUCCESS) {
-            std::cerr << "Rank " << rank
+         if(colorAux != MPI_UNDEFINED){
+           // Create an aux cartesian communicator corresponding to the comm3d (but shidted).
+           status = MPI_Cart_create(comm1d_aux, 3, ntasksPerDim.data(), isPeriodicInt.data(), 0, &comm3d_aux);
+           if(status != MPI_SUCCESS) {
+             std::cerr << "Creating cartesian communicatior failed when attempting to create FsGrid!" << std::endl;
+             throw std::runtime_error("FSGrid communicator setup failed");
+           }
+           status = MPI_Comm_rank(comm3d_aux, &rankAux);
+           if(status != MPI_SUCCESS) {
+             std::cerr << "Getting rank failed when attempting to create FsGrid!" << std::endl;
+             return;
+           }
+           // Determine our position in the resulting task-grid
+           status = MPI_Cart_coords(comm3d_aux, rankAux, 3, taskPositionAux.data());
+           if(status != MPI_SUCCESS) {
+           std::cerr << "Rank " << rankAux
                << " unable to determine own position in cartesian communicator when attempting to create FsGrid!"
                << std::endl;
+           }
+         }
+
+#ifdef FSGRID_DEBUG
+         // All FS ranks send their true comm3d rank and taskPosition data to dest
+         MPI_Request *request = new MPI_Request[(parentSize - 1) / size * 2 + 2];
+         for(int i = 0; i < (parentSize - 1) / size; i++){
+            int dest = (colorFs != MPI_UNDEFINED) ? parentRank + i * size + (parentSize - 1) 
+               % size + 1 : MPI_PROC_NULL;
+            if(dest >= parentSize) 
+               dest = MPI_PROC_NULL;
+            MPI_Isend(&rank, 1, MPI_INT, dest, 9274, parent_comm, &request[2 * i]);
+            MPI_Isend(taskPosition.data(), 3, MPI_INT, dest, 9275, parent_comm, &request[2 * i + 1]);
+         }
+
+         // All Aux ranks receive the true comm3d rank and taskPosition data from 
+         // source and then compare that it matches their aux data
+         std::array<int, 3> taskPositionRecv;
+         int rankRecv;
+         int source = (colorAux != MPI_UNDEFINED) ? parentRank - (parentRank - 
+            (parentSize % size)) / size * size - parentSize % size : MPI_PROC_NULL;
+
+         MPI_Irecv(&rankRecv, 1, MPI_INT, source, 9274, parent_comm, &request[(parentSize - 1) / size * 2]);
+         MPI_Irecv(taskPositionRecv.data(), 3, MPI_INT, source, 9275, parent_comm, 
+            &request[(parentSize - 1) / size * 2 + 1]);
+         MPI_Waitall((parentSize - 1) / size * 2 + 2, request, MPI_STATUS_IGNORE);
+
+         if(colorAux != MPI_UNDEFINED){
+            if(rankRecv != rankAux ||
+                 taskPositionRecv[0] != taskPositionAux[0] ||
+                    taskPositionRecv[1] != taskPositionAux[1] ||
+                       taskPositionRecv[2] != taskPositionAux[2]){
+               std::cerr << "Rank: " << parentRank
+                 << ". Aux cartesian communicator 'comm3d_aux' does not match with 'comm3d' !" << std::endl;
+               throw std::runtime_error("FSGrid aux communicator setup failed.");    
+            }
+         }
+         delete[] request;
+#endif // FSGRID_DEBUG
+
+         // Set correct task position for non-FS ranks
+         if(colorFs == MPI_UNDEFINED){
+            for(int i=0; i<3; i++){
+               taskPosition[i] = taskPositionAux[i];
+            }
+         }
+
+         // Determine size of our local grid
+         for(int i=0; i<3; i++) {
+            localSize[i] = calcLocalSize(globalSize[i],ntasksPerDim[i], taskPosition[i]);
+            localStart[i] = calcLocalStart(globalSize[i],ntasksPerDim[i], taskPosition[i]);
+         }
+
+         if(  localSize[0] == 0 || (globalSize[0] > stencil && localSize[0] < stencil)
+           || localSize[1] == 0 || (globalSize[1] > stencil && localSize[1] < stencil)
+           || localSize[2] == 0 || (globalSize[2] > stencil && localSize[2] < stencil)) {
+            std::cerr << "FSGrid space partitioning leads to a space that is too small on Rank " << rank << "." <<std::endl;
+            std::cerr << "Please run with a different number of Tasks, so that space is better divisible." <<std::endl;
+            throw std::runtime_error("FSGrid too small domains");
+         }
+
+         // If non-FS process, set rank to -1 and localSize to zero and return
+         if(colorFs == MPI_UNDEFINED){
+            rank = -1;
+            localSize[0] = 0;
+            localSize[1] = 0;
+            localSize[2] = 0;
+            comm3d = comm3d_aux;
+            comm3d_aux = MPI_COMM_NULL;
+            return;
          }
 
          // Allocate the array of neighbours
@@ -363,21 +480,6 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
                   }
                }
             }
-         }
-
-
-         // Determine size of our local grid
-         for(int i=0; i<3; i++) {
-            localSize[i] = calcLocalSize(globalSize[i],ntasksPerDim[i], taskPosition[i]);
-            localStart[i] = calcLocalStart(globalSize[i],ntasksPerDim[i], taskPosition[i]);
-         }
-
-         if(  localSize[0] == 0 || (globalSize[0] > stencil && localSize[0] < stencil)
-           || localSize[1] == 0 || (globalSize[1] > stencil && localSize[1] < stencil)
-           || localSize[2] == 0 || (globalSize[2] > stencil && localSize[2] < stencil)) {
-            std::cerr << "FSGrid space partitioning leads to a space that is too small on Rank " << rank << ". ProcessBox was [" << localSize[0] << ", " << localSize[1] << ", " << localSize[2] <<"]" <<std::endl;
-            std::cerr << "Please run with a different number of Tasks, so that space is better divisible." <<std::endl;
-            throw std::runtime_error("FSGrid too small domains");
          }
 
          // Allocate local storage array
@@ -516,13 +618,24 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
        *  Cleans up the cartesian communicator
        */
       void finalize() {
-         for(int i=0;i<27;i++){
-            if(neighbourReceiveType[i] != MPI_DATATYPE_NULL)
-               MPI_Type_free(&(neighbourReceiveType[i]));
-            if(neighbourSendType[i] != MPI_DATATYPE_NULL)
-               MPI_Type_free(&(neighbourSendType[i]));
+         // If not a non-FS process
+         if(rank != -1){
+            for(int i=0;i<27;i++){
+               if(neighbourReceiveType[i] != MPI_DATATYPE_NULL)
+                  MPI_Type_free(&(neighbourReceiveType[i]));
+               if(neighbourSendType[i] != MPI_DATATYPE_NULL)
+                  MPI_Type_free(&(neighbourSendType[i]));
+            }
          }
-         MPI_Comm_free(&comm3d);
+
+         if(comm3d != MPI_COMM_NULL)
+            MPI_Comm_free(&comm3d);
+         if(comm3d_aux != MPI_COMM_NULL)
+            MPI_Comm_free(&comm3d_aux);
+         if(comm1d != MPI_COMM_NULL)
+            MPI_Comm_free(&comm1d);
+         if(comm1d_aux != MPI_COMM_NULL)
+            MPI_Comm_free(&comm1d_aux);
       }
 
       /*! Returns the task responsible, and its localID for handling the cell with the given GlobalID
@@ -812,6 +925,9 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
       /*! Perform ghost cell communication.
        */
       void updateGhostCells() {
+
+         if(rank == -1) return;
+
          //TODO, faster with simultaneous isends& ireceives?
          std::array<MPI_Request, 27> receiveRequests;
          std::array<MPI_Request, 27> sendRequests;
@@ -1068,6 +1184,11 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
         return rank;
       }
 
+      /*! Get the number of ranks in the FsGrid communicator */
+      int getSize() {
+        return ntasksPerDim[0] * ntasksPerDim[1] * ntasksPerDim[2];
+      }
+
       /*! Get in which directions, if any, this grid is periodic */
       std::array<bool, 3>& getPeriodic() {
         return periodic;
@@ -1077,7 +1198,19 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
        * Function syntax is identical to MPI_Allreduce, except the final (communicator
        * argument will not be needed) */
       int Allreduce(void* sendbuf, void* recvbuf, int count, MPI_Datatype datatype, MPI_Op op) {
-         return MPI_Allreduce(sendbuf, recvbuf, count, datatype, op, comm3d);
+         
+         // If a normal FS-rank
+         if(rank != -1){
+            return MPI_Allreduce(sendbuf, recvbuf, count, datatype, op, comm3d);
+         }
+         // If a non-FS rank, no need to communicate
+         else{
+            int datatypeSize;
+            MPI_Type_size(datatype, &datatypeSize);
+            for(int i = 0; i < count * datatypeSize; ++i)
+               ((char*)recvbuf)[i] = ((char*)sendbuf)[i];
+            return MPI_ERR_RANK; // This is ok for a non-FS rank
+         }
       }
 
       /*! Get the decomposition array*/
@@ -1087,7 +1220,10 @@ template <typename T, int stencil> class FsGrid : public FsGridTools{
 
    private:
       //! MPI Cartesian communicator used in this grid
-      MPI_Comm comm3d;
+      MPI_Comm comm1d = MPI_COMM_NULL;
+      MPI_Comm comm1d_aux = MPI_COMM_NULL;
+      MPI_Comm comm3d = MPI_COMM_NULL;
+      MPI_Comm comm3d_aux = MPI_COMM_NULL;
       int rank; //!< This task's rank in the communicator
       std::vector<MPI_Request> requests;
       uint numRequests;
