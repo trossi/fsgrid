@@ -9,30 +9,14 @@ add_executable(${testname}
     foo.cpp
 )
 
-target_compile_options(${testname} PRIVATE
-    ${MPI_CXX_COMPILE_OPTIONS}
-)
-
-target_compile_definitions(${testname} PRIVATE
-    ${MPI_CXX_COMPILE_DEFINITIONS}
-)
-
 target_include_directories(${testname} PRIVATE
     "${PROJECT_SOURCE_DIR}/src"
-)
-
-target_include_directories(${testname} SYSTEM PRIVATE
-    ${MPI_CXX_INCLUDE_DIRS}
-)
-
-target_link_options(${testname} PRIVATE
-    ${MPI_CXX_LINK_FLAGS}
 )
 
 target_link_libraries(
   ${testname}
   GTest::gtest_main
-  ${MPI_CXX_LIBRARIES}
+  MPI::MPI_CXX
 )
 
 # Run the tests with mpiexec
