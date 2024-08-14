@@ -4,25 +4,36 @@ find_package(MPI REQUIRED)
 
 set(testname ${PROJECT_NAME}_mpi_tests)
 
-add_executable(
-    ${testname}
+add_executable(${testname}
     main.cpp
     foo.cpp
 )
 
+target_compile_options(${testname} PRIVATE
+    ${MPI_CXX_COMPILE_OPTIONS}
+)
+
+target_compile_definitions(${testname} PRIVATE
+    ${MPI_CXX_COMPILE_DEFINITIONS}
+)
+
 target_include_directories(${testname} PRIVATE
     "${PROJECT_SOURCE_DIR}/src"
-    )
+)
 
 target_include_directories(${testname} SYSTEM PRIVATE
     "${googletest_include}"
-    ${MPI_C_INCLUDE_DIRS}
-    )
+    ${MPI_CXX_INCLUDE_DIRS}
+)
+
+target_link_options(${testname} PRIVATE
+    ${MPI_CXX_LINK_FLAGS}
+)
 
 target_link_libraries(
   ${testname}
   GTest::gtest_main
-  ${PROJECT_NAME}
+  ${MPI_CXX_LIBRARIES}
 )
 
 include(GoogleTest)

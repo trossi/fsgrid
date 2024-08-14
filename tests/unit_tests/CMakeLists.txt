@@ -18,7 +18,6 @@ target_include_directories(${testname} SYSTEM PRIVATE
 target_link_libraries(
   ${testname}
   GTest::gtest_main
-  ${PROJECT_NAME}
 )
 
 include(GoogleTest)
