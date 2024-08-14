@@ -22,7 +22,6 @@ target_include_directories(${testname} PRIVATE
 )
 
 target_include_directories(${testname} SYSTEM PRIVATE
-    "${googletest_include}"
     ${MPI_CXX_INCLUDE_DIRS}
 )
 
@@ -35,8 +34,6 @@ target_link_libraries(
   GTest::gtest_main
   ${MPI_CXX_LIBRARIES}
 )
-
-include(GoogleTest)
 
 # Run the tests with mpiexec
 # Need to add before gtest_add_tests to have effect

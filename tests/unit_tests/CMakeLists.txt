@@ -11,14 +11,9 @@ target_include_directories(${testname} PRIVATE
     "${PROJECT_SOURCE_DIR}/src"
     )
 
-target_include_directories(${testname} SYSTEM PRIVATE
-    "${googletest_include}"
-    )
-
 target_link_libraries(
   ${testname}
   GTest::gtest_main
 )
 
-include(GoogleTest)
 gtest_discover_tests(${testname})
