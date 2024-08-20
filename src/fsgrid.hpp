@@ -20,6 +20,8 @@
   along with fsgrid.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+// Juhana TODO: add all old tests, then split file to smaller files
+
 #include <algorithm>
 #include <array>
 #include <cassert>
@@ -47,8 +49,7 @@ struct FsGridTools {
     // clang-format off
     //! Helper function: calculate position of the local coordinate space for
     //! the given dimension
-    // \param globalCells Number of cells in the global Simulation, in this
-    // dimension
+    // \param globalCells Number of cells in the global Simulation, in this dimension
     // \param ntasks Total number of tasks in this dimension
     // \param my_n This task's position in this dimension
     // \return Cell number at which this task's domains cells start (actual cells, not counting ghost cells)
@@ -89,8 +90,7 @@ struct FsGridTools {
     // clang-format off
     //! Helper function: calculate size of the local coordinate space for the
     //! given dimension
-    // \param globalCells Number of cells in the global Simulation, in this
-    // dimension
+    // \param globalCells Number of cells in the global Simulation, in this dimension
     // \param ntasks Total number of tasks in this dimension
     // \param my_n This task's position in this dimension
     // \return Number of cells for this task's local domain (actual cells, not counting ghost cells)
@@ -269,8 +269,7 @@ struct FsGridCouplingInformation {
 // clang-format off
 /*! Simple cartesian, non-loadbalancing MPI Grid for use with the fieldsolver
  *
- * \param T datastructure containing the field in each cell which this grid
- * manages
+ * \param T datastructure containing the field in each cell which this grid manages
  * \param stencil ghost cell width of this grid
  */
 // clang-format on
