@@ -44,12 +44,15 @@ struct FsGridTools {
     typedef int64_t GlobalID;
     typedef int Task_t;
 
+    // clang-format off
     //! Helper function: calculate position of the local coordinate space for
     //! the given dimension
     // \param globalCells Number of cells in the global Simulation, in this
-    // dimension \param ntasks Total number of tasks in this dimension \param
-    // my_n This task's position in this dimension \return Cell number at which
-    // this task's domains cells start (actual cells, not counting ghost cells)
+    // dimension
+    // \param ntasks Total number of tasks in this dimension
+    // \param my_n This task's position in this dimension
+    // \return Cell number at which this task's domains cells start (actual cells, not counting ghost cells)
+    // clang-format on
     static FsIndex_t calcLocalStart(FsSize_t globalCells, Task_t ntasks,
                                     Task_t my_n) {
         FsIndex_t n_per_task = globalCells / ntasks;
@@ -83,12 +86,15 @@ struct FsGridTools {
         return cell;
     }
 
+    // clang-format off
     //! Helper function: calculate size of the local coordinate space for the
     //! given dimension
     // \param globalCells Number of cells in the global Simulation, in this
-    // dimension \param ntasks Total number of tasks in this dimension \param
-    // my_n This task's position in this dimension \return Number of cells for
-    // this task's local domain (actual cells, not counting ghost cells)
+    // dimension
+    // \param ntasks Total number of tasks in this dimension
+    // \param my_n This task's position in this dimension
+    // \return Number of cells for this task's local domain (actual cells, not counting ghost cells)
+    // clang-format on
     static FsIndex_t calcLocalSize(FsSize_t globalCells, Task_t ntasks,
                                    Task_t my_n) {
         FsIndex_t n_per_task = globalCells / ntasks;
@@ -106,6 +112,10 @@ struct FsGridTools {
         const std::array<FsSize_t, 3> &GlobalSize, Task_t nProcs,
         std::array<Task_t, 3> &processDomainDecomposition, int stencilSize = 1,
         int verbose = 0) {
+        // Juhana TODO:
+        // - should return the array instead of take the return value
+        // as the third argument
+        // - should return a struct called Decomposition instead of an array
         int myRank, MPI_flag;
         MPI_Initialized(&MPI_flag);
         if (MPI_flag) {
@@ -119,10 +129,13 @@ struct FsGridTools {
         std::array<FsSize_t, 3> processBox;
         std::array<FsSize_t, 3> minDomainSize;
         int64_t optimValue = std::numeric_limits<int64_t>::max();
+
         std::vector<std::pair<int64_t, std::array<Task_t, 3>>>
             scored_decompositions;
+
         scored_decompositions.push_back(
             std::pair<int64_t, std::array<Task_t, 3>>(optimValue, {0, 0, 0}));
+
         for (int i = 0; i < 3; i++) {
             systemDim[i] = GlobalSize[i];
             if (GlobalSize[i] == 1) {
@@ -135,6 +148,7 @@ struct FsGridTools {
                 minDomainSize[i] = stencilSize;
             }
         }
+
         processDomainDecomposition = {1, 1, 1};
         for (Task_t i = 1;
              i <= std::min(nProcs, (Task_t)(GlobalSize[0] / minDomainSize[0]));
@@ -252,11 +266,14 @@ struct FsGridCouplingInformation {
     }
 };
 
+// clang-format off
 /*! Simple cartesian, non-loadbalancing MPI Grid for use with the fieldsolver
  *
  * \param T datastructure containing the field in each cell which this grid
- * manages \param stencil ghost cell width of this grid
+ * manages
+ * \param stencil ghost cell width of this grid
  */
+// clang-format on
 template <typename T, int stencil> class FsGrid : public FsGridTools {
     template <typename ArrayT> void swapArray(std::array<ArrayT, 3> &array) {
         ArrayT a = array[0];
@@ -273,12 +290,14 @@ template <typename T, int stencil> class FsGrid : public FsGridTools {
         : FsGrid(globalSize, parent_comm, isPeriodic, &coupling, decomposition,
                  verbose) {}
 
+    // clang-format off
     /*! Constructor for this grid.
      * \param globalSize Cell size of the global simulation domain.
      * \param MPI_Comm The MPI communicator this grid should use.
      * \param isPeriodic An array specifying, for each dimension, whether it is
      * to be treated as periodic.
      */
+    // clang-format on
     FsGrid(std::array<FsSize_t, 3> globalSize, MPI_Comm parent_comm,
            std::array<bool, 3> isPeriodic, FsGridCouplingInformation *coupling,
            const std::array<Task_t, 3> &decomposition = {0, 0, 0},
@@ -729,10 +748,13 @@ template <typename T, int stencil> class FsGrid : public FsGridTools {
             MPI_Comm_free(&comm1d_aux);
     }
 
+    // clang-format off
     /*! Returns the task responsible, and its localID for handling the cell with
-     * the given GlobalID \param id GlobalID of the cell for which task is to be
-     * determined \return a task for the grid's cartesian communicator
+     * the given GlobalID
+     * \param id GlobalID of the cell for which task is to be determined
+     * \return a task for the grid's cartesian communicator
      */
+    // clang-format on
     std::pair<int, LocalID> getTaskForGlobalID(GlobalID id) {
         // Transform globalID to global cell coordinate
         std::array<FsIndex_t, 3> cell =
@@ -793,12 +815,14 @@ template <typename T, int stencil> class FsGrid : public FsGridTools {
         return retVal;
     }
 
+    // clang-format off
     /*! Transform global cell coordinates into the local domain.
      * If the coordinates are out of bounds, (-1,-1,-1) is returned.
      * \param x The cell's global x coordinate
      * \param y The cell's global y coordinate
      * \param z The cell's global z coordinate
      */
+    // clang-format on
     std::array<FsIndex_t, 3> globalToLocal(FsSize_t x, FsSize_t y, FsSize_t z) {
         std::array<FsIndex_t, 3> retval;
         retval[0] = (FsIndex_t)x - localStart[0];
@@ -814,20 +838,25 @@ template <typename T, int stencil> class FsGrid : public FsGridTools {
         return retval;
     }
 
+    // clang-format off
     /*! Determine the cell's GlobalID from its local x,y,z coordinates
      * \param x The cell's task-local x coordinate
      * \param y The cell's task-local y coordinate
      * \param z The cell's task-local z coordinate
      */
+    // clang-format on
     GlobalID GlobalIDForCoords(int x, int y, int z) {
         return x + localStart[0] + globalSize[0] * (y + localStart[1]) +
                globalSize[0] * globalSize[1] * (z + localStart[2]);
     }
+
+    // clang-format off
     /*! Determine the cell's LocalID from its local x,y,z coordinates
      * \param x The cell's task-local x coordinate
      * \param y The cell's task-local y coordinate
      * \param z The cell's task-local z coordinate
      */
+    // clang-format on
     LocalID LocalIDForCoords(int x, int y, int z) {
         LocalID index = 0;
         if (globalSize[2] > 1) {
@@ -843,12 +872,14 @@ template <typename T, int stencil> class FsGrid : public FsGridTools {
         return index;
     }
 
+    // clang-format off
     /*! Prepare for transfer of Rank information from a coupled grid.
      * Setup MPI Irecv requests to recieve data for each grid cell, and prepare
      * buffer space to hold the MPI requests of the sends.
      *
      * \param cellsToCouple How many cells are going to be coupled
      */
+    // clang-format on
     void setupForGridCoupling(int cellsToCouple) {
         int status;
         // Make sure we have sufficient buffer space to store our mpi
@@ -882,6 +913,7 @@ template <typename T, int stencil> class FsGrid : public FsGridTools {
         }
     }
 
+    // clang-format off
     /*! Set the MPI rank responsible for external communication with the given
      * cell. If, for example, a separate grid is used in another part of the
      * code, this would be the rank in that grid, responsible for the
@@ -893,6 +925,7 @@ template <typename T, int stencil> class FsGrid : public FsGridTools {
      * \param id Global cell ID to be addressed
      * \iparam cellRank Rank that owns the cell in the other external grid.
      */
+    // clang-format on
     void setGridCoupling(GlobalID id, int cellRank) {
         // Determine Task and localID that this cell belongs to
         std::pair<int, LocalID> TaskLid = getTaskForGlobalID(id);
@@ -915,12 +948,14 @@ template <typename T, int stencil> class FsGrid : public FsGridTools {
         MPI_Barrier(comm3d);
     }
 
+    // clang-format off
     /*! Prepare for transfer of grid cell data into this grid.
      * Setup MPI Irecv requests to recieve data for each grid cell, and prepare
      * buffer space to hold the MPI requests of the sends.
      *
      * \param cellsToSend How many cells are going to be sent by this task
      */
+    // clang-format on
     void setupForTransferIn(int cellsToSend) {
         int status;
         // Make sure we have sufficient buffer space to store our mpi requests
@@ -948,12 +983,15 @@ template <typename T, int stencil> class FsGrid : public FsGridTools {
         }
     }
 
+    // clang-format off
     /*! Set grid cell wtih the given ID to the value specified. Note that this
      * doesn't need to be a local cell. Note that this function should be
      * concurrently called by all tasks, to allow for point-to-point
-     * communication. \param id Global cell ID to be filled \iparam value New
-     * value to be assigned to it
+     * communication.
+     * \param id Global cell ID to be filled
+     * \iparam value New value to be assigned to it
      */
+    // clang-format on
     void transferDataIn(GlobalID id, T *value) {
 
         // Determine Task and localID that this cell belongs to
@@ -969,6 +1007,7 @@ template <typename T, int stencil> class FsGrid : public FsGridTools {
                       << std::endl;
         }
     }
+
     /*! Called after setting up the transfers into or out of this grid.
      * Basically only does a MPI_Waitall for all requests.
      */
@@ -978,12 +1017,14 @@ template <typename T, int stencil> class FsGrid : public FsGridTools {
         numRequests = 0;
     }
 
+    // clang-format off
     /*! Prepare for transfer of grid cell data out of this grid.
      * Setup MPI Isend requests to send data for each grid cell, and prepare
      * buffer space to hold the MPI requests of the sends.
      *
      * \param cellsToSend How many cells are going to be sent by this task
      */
+    // clang-format on
     void setupForTransferOut(int cellsToReceive) {
         // Make sure we have sufficient buffer space to store our mpi requests
         requests.resize(localSize[0] * localSize[1] * localSize[2] +
@@ -991,10 +1032,13 @@ template <typename T, int stencil> class FsGrid : public FsGridTools {
         numRequests = 0;
     }
 
+    // clang-format off
     /*! Get the value of the grid cell wtih the given ID. Note that this doesn't
-     * need to be a local cell. \param id Global cell ID to be read \iparam
-     * target Location that the result is to be stored in
+     * need to be a local cell.
+     * \param id Global cell ID to be read
+     * \iparam target Location that the result is to be stored in
      */
+    // clang-format on
     void transferDataOut(GlobalID id, T *target) {
 
         // Determine Task and localID that this cell belongs to
@@ -1011,11 +1055,13 @@ template <typename T, int stencil> class FsGrid : public FsGridTools {
         }
     }
 
+    // clang-format off
     /*! Finalize the transfer of data out of this grid, re-integrating it back
      *! into the locations where it came from.
      * This method assumes that transferDataOut() has been called for each cell
-     *beforehand, so that appropriate recieve buffers exist in the target ranks.
+     * beforehand, so that appropriate recieve buffers exist in the target ranks.
      */
+    // clang-format on
     void finishTransfersOut() {
         int status;
         for (FsIndex_t z = 0; z < localSize[2]; z++) {
@@ -1102,6 +1148,7 @@ template <typename T, int stencil> class FsGrid : public FsGridTools {
      */
     std::array<FsSize_t, 3> &getGlobalSize() { return globalSize; }
 
+    // clang-format off
     /*! Calculate global cell position (XYZ in global cell space) from local
      * cell coordinates.
      *
@@ -1111,6 +1158,7 @@ template <typename T, int stencil> class FsGrid : public FsGridTools {
      *
      * \return Global cell coordinates
      */
+    // clang-format on
     std::array<FsIndex_t, 3> getGlobalIndices(int64_t x, int64_t y, int64_t z) {
         std::array<FsIndex_t, 3> retval;
         retval[0] = localStart[0] + x;
@@ -1120,12 +1168,14 @@ template <typename T, int stencil> class FsGrid : public FsGridTools {
         return retval;
     }
 
+    // clang-format off
     /*! Get a reference to the field data in a cell
      * \param x x-Coordinate, in cells
      * \param y y-Coordinate, in cells
      * \param z z-Coordinate, in cells
      * \return A reference to cell data in the given cell
      */
+    // clang-format on
     T *get(int x, int y, int z) {
         // Keep track which neighbour this cell actually belongs to (13 =
         // ourself)
@@ -1252,6 +1302,7 @@ template <typename T, int stencil> class FsGrid : public FsGridTools {
     double DX, DY, DZ;
     std::array<double, 3> physicalGlobalStart;
 
+    // clang-format off
     /*! Get the physical coordinates in the global simulation space for
      * the given cell.
      *
@@ -1259,6 +1310,7 @@ template <typename T, int stencil> class FsGrid : public FsGridTools {
      * \param y local y-Coordinate, in cells
      * \param z local z-Coordinate, in cells
      */
+    // clang-format on
     std::array<double, 3> getPhysicalCoords(int x, int y, int z) {
         std::array<double, 3> coords;
         coords[0] = physicalGlobalStart[0] + (localStart[0] + x) * DX;
@@ -1268,19 +1320,20 @@ template <typename T, int stencil> class FsGrid : public FsGridTools {
         return coords;
     }
 
+    // clang-format off
     /*! Debugging output helper function. Allows for nicely formatted printing
      * of grid contents. Since the grid data format is varying, the actual
      * printing should be done in a lambda passed to this function. Example
      * usage to plot |B|:
      *
-     * perBGrid.debugOutput([](const std::array<Real,
-     * fsgrids::bfield::N_BFIELD>& a)->void{ cerr <<
-     * sqrt(a[0]*a[0]+a[1]*a[1]+a[2]*a[2]) << ", ";
+     * perBGrid.debugOutput([](const std::array<Real, fsgrids::bfield::N_BFIELD>& a) -> void {
+     *     cerr << sqrt(a[0] * a[0] + a[1] * a[1] + a[2] * a[2]) << ", ";
      * });
      *
      * \param func Function pointer (or lambda) which is called with a cell
      * reference, in order. Use std::cerr in it to print desired value.
      */
+    // clang-format on
     void debugOutput(void(func)(const T &)) {
         int xmin = 0, xmax = 1;
         int ymin = 0, ymax = 1;
