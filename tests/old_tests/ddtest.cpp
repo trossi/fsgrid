@@ -19,13 +19,10 @@
   along with fsgrid.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include <stdlib.h>
-#include <stdio.h>
+#include "../../src/fsgrid.hpp"
 #include <array>
-#include <math.h>
-#include <algorithm>
-#include <limits>
-#include "../fsgrid.hpp"
+#include <stdio.h>
+#include <stdlib.h>
 
 int main(int argc, char **argv){
   

@@ -5,9 +5,9 @@ CXXFLAGS= -O3 -std=c++17 -march=native -g -Wall
 
 all: clean ddtest
 
-benchmark: benchmark.cpp ../fsgrid.hpp
+benchmark: benchmark.cpp ../../src/fsgrid.hpp
 	$(CXX) $(CXXFLAGS) -o $@ $<
-test: test.cpp ../fsgrid.hpp
+test: test.cpp ../../src/fsgrid.hpp
 	$(CXX) $(CXXFLAGS) -o $@ $<
 ddtest: ddtest.cpp
 	$(CXX) $(CXXFLAGS) -o $@ $<
