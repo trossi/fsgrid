@@ -991,7 +991,7 @@ template <typename T, int stencil> class FsGrid : public FsGridTools {
      * \iparam value New value to be assigned to it
      */
     // clang-format on
-    void transferDataIn(GlobalID id, T *value) {
+    void transferDataIn(GlobalID id, const T *value) {
 
         // Determine Task and localID that this cell belongs to
         std::pair<int, LocalID> TaskLid = getTaskForGlobalID(id);
