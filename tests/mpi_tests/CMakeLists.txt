@@ -6,6 +6,7 @@ set(testname ${PROJECT_NAME}_mpi_tests)
 
 add_executable(${testname}
     main.cpp
+    data_transfer.cpp
     domain_decomposition.cpp
 )
 
