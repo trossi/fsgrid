@@ -94,8 +94,8 @@ TEST(DomainDecomposition, size_256_256_256_nprocs_64) {
 TEST(DomainDecomposition, size_128_256_256_nprocs_64) {
     const auto [x, y, z] = computeDecomposition(SystemSize{128, 256, 256}, 64);
     ASSERT_EQ(x, 1);
-    ASSERT_EQ(y, 64);
-    ASSERT_EQ(z, 1);
+    ASSERT_EQ(y, 1);
+    ASSERT_EQ(z, 64);
 }
 
 TEST(DomainDecomposition, size_256_128_256_nprocs_64) {
@@ -108,8 +108,8 @@ TEST(DomainDecomposition, size_256_128_256_nprocs_64) {
 TEST(DomainDecomposition, size_256_256_128_nprocs_64) {
     const auto [x, y, z] = computeDecomposition(SystemSize{256, 256, 128}, 64);
     ASSERT_EQ(x, 1);
-    ASSERT_EQ(y, 1);
-    ASSERT_EQ(z, 64);
+    ASSERT_EQ(y, 64);
+    ASSERT_EQ(z, 1);
 }
 
 TEST(DomainDecomposition, size_1024_256_512_nprocs_64) {
